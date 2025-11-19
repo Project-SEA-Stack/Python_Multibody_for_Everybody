@@ -1,0 +1,300 @@
+chrono-version: "9.0"
+
+model:
+  name: "SpiderFloat_XZ"
+  angle_degrees: false
+
+  bodies:
+    - name: ground
+      fixed: true
+      location: [0, 0, 0]
+      visualization:
+        shapes:
+          - type: BOX
+            location: [10, 0, 0.]
+            orientation: [0, 0, 0]
+            dimensions: [25, 1., .0]
+            color: [0.3, 0.3, 0.35]
+
+    # 1: Base (free/floating)
+    - name: base
+      mass: 1
+      inertia: { moments: [2, 2, 2] }
+      location: [10, 0, 6]
+      visualization:
+        shapes:
+          - type: BOX
+            location: [0, 0, 1.25]
+            orientation: [0, 0, 0]
+            dimensions: [1.0, 0.2, 7.5]
+            color: [0.85, 0.85, 0.85]
+
+    # 2: Right arm
+    - name: arm_right
+      mass: 1
+      inertia: { moments: [2, 2, 2] }
+      location: [15.5, 0, 4.0]
+      visualization:
+        shapes:
+          - type: BOX
+            location: [-0.25, 0, 0]
+            orientation: [0, 0, 0]
+            dimensions: [9.5, 0.2, 0.3]
+            color: [0.2, 0.6, 0.9]
+
+    # 3: Left arm
+    - name: arm_left
+      mass: 1
+      inertia: { moments: [2, 2, 2] }
+      location: [4.5, 0, 4.0]
+      visualization:
+        shapes:
+          - type: BOX
+            location: [0.25, 0, 0]
+            orientation: [0, 0, 0]
+            dimensions: [9.5, 0.2, 0.3]
+            color: [0.9, 0.4, 0.2]
+
+    # 4: Right slider
+    - name: slider_right
+      mass: 1
+      inertia: { moments: [2, 2, 2] }
+      location: [20.5, 0, 4.0]
+      visualization:
+        shapes:
+          - type: BOX
+            location: [0, 0, 0]
+            orientation: [0, 0, 0]
+            dimensions: [1.0, 0.2, 0.5]
+            color: [0.2, 0.6, 0.9]
+
+    # 5: Left slider
+    - name: slider_left
+      mass: 1
+      inertia: { moments: [2, 2, 2] }
+      location: [-0.5, 0, 4.0]
+      visualization:
+        shapes:
+          - type: BOX
+            location: [0, 0, 0]
+            orientation: [0, 0, 0]
+            dimensions: [1.0, 0.2, 0.5]
+            color: [0.9, 0.4, 0.2]
+
+    # 6: Right tip
+    - name: tip_right
+      mass: 1
+      inertia: { moments: [2, 2, 2] }
+      location: [20.5, 0, 5.5]
+      visualization:
+        shapes:
+          - type: SPHERE
+            location: [0, 0, 0]
+            orientation: [0, 0, 0]
+            radius: 0.25
+            color: [0.1, 0.7, 0.3]
+
+    # 7: Left tip
+    - name: tip_left
+      mass: 1
+      inertia: { moments: [2, 2, 2] }
+      location: [-0.5, 0, 5.5]
+      visualization:
+        shapes:
+          - type: SPHERE
+            location: [0, 0, 0]
+            orientation: [0, 0, 0]
+            radius: 0.25
+            color: [0.7, 0.1, 0.3]
+
+  joints:
+    # Revolutes about +Y (rotation around y-axis)
+    - name: J_base_arm_right
+      type: REVOLUTE
+      body1: base
+      body2: arm_right
+      location: [10.5, 0, 4.0]
+      axis: [0, 1, 0]
+
+    - name: J_base_arm_left
+      type: REVOLUTE
+      body1: base
+      body2: arm_left
+      location: [9.5, 0, 4.0]
+      axis: [0, 1, 0]
+
+    # Prismatic along +X (still in XZ plane; y = 0)
+    - name: J_arm_right_slider_right
+      type: PRISMATIC
+      body1: arm_right
+      body2: slider_right
+      location: [20.0, 0, 4.0]
+      axis: [1, 0, 0]
+
+    - name: J_arm_left_slider_left
+      type: PRISMATIC
+      body1: arm_left
+      body2: slider_left
+      location: [0.0, 0, 4.0]
+      axis: [1, 0, 0]
+
+    # Tip revolutes about +Y
+    - name: J_slider_right_tip_right
+      type: REVOLUTE
+      body1: slider_right
+      body2: tip_right
+      location: [20.5, 0, 4.0]
+      axis: [0, 1, 0]
+
+    - name: J_slider_left_tip_left
+      type: REVOLUTE
+      body1: slider_left
+      body2: tip_left
+      location: [-0.5, 0, 4.0]
+      axis: [0, 1, 0]
+
+  tsdas:
+  - name: TSDA_BD10_BD20
+    body1: base
+    body2: arm_right
+    point1: [10.5, 0, 3.5]
+    point2: [19.5, 0, 4.0]
+    spring_coefficient: 0.1
+    damping_coefficient: 0.0
+    free_length: 9.0139
+    visualization: { type: SPRING, radius: 0.03, turns: 12, resolution: 20 }
+
+  - name: TSDA_BD11_BD30
+    body1: base
+    body2: arm_left
+    point1: [9.5, 0, 3.5]
+    point2: [0.5, 0, 4.0]
+    spring_coefficient: 0.1
+    damping_coefficient: 0.0
+    free_length: 9.0139
+    visualization: { type: SPRING, radius: 0.03, turns: 12 }
+
+  - name: TSDA_BD12_BD21
+    body1: base
+    body2: arm_right
+    point1: [10.5, 0, 11.0]
+    point2: [20.0, 0, 4.0]
+    spring_coefficient: 0.1
+    damping_coefficient: 0.0
+    free_length: 11.8004
+    visualization: { type: SPRING, radius: 0.03, turns: 12 }
+
+  - name: TSDA_BD13_BD31
+    body1: base
+    body2: arm_left
+    point1: [9.5, 0, 11.0]
+    point2: [0.0, 0, 4.0]
+    spring_coefficient: 0.1
+    damping_coefficient: 0.0
+    free_length: 11.8004
+    visualization: { type: SPRING, radius: 0.03, turns: 12 }
+
+  - name: TSDA_BD20_GR00
+    body1: arm_right
+    body2: ground
+    point1: [19.5, 0, 4.0]
+    point2: [20.0, 0, 0.0]
+    spring_coefficient: 0.1
+    damping_coefficient: 0.0
+    free_length: 3.0414
+    visualization: { type: SPRING, radius: 0.03, turns: 10 }
+
+  - name: TSDA_GR01_BD30
+    body1: ground
+    body2: arm_left
+    point1: [0, 0, 0]
+    point2: [0.5, 0, 4.0]
+    spring_coefficient: 0.1
+    damping_coefficient: 0.0
+    free_length: 3.0414
+    visualization: { type: SPRING, radius: 0.03, turns: 10 }
+
+  - name: TD_GR00_CG_arm_right
+    body1: ground
+    body2: arm_right
+    point1: [20.0, 0, 0.0]
+    point2: [15.5, 0, 4.0]
+    spring_coefficient: 0.0
+    damping_coefficient: 3.0
+    free_length: 5.4083269132
+    visualization: { type: SEGMENT }
+
+  - name: TD_GR01_CG_arm_left
+    body1: ground
+    body2: arm_left
+    point1: [0, 0, 0]
+    point2: [4.5, 0, 4.0]
+    spring_coefficient: 0.0
+    damping_coefficient: 3.0
+    free_length: 5.4083269132
+    visualization: { type: SEGMENT }
+
+  # Rotational spring-dampers at shoulders (about +Y)
+  rsdas:
+    - name: RSDA_base_arm_right
+      body1: base
+      body2: arm_right
+      location: [10.5, 0, 4.0]
+      axis: [0, 1, 0]
+      free_angle: 0.0
+      spring_coefficient: 100.0
+      damping_coefficient: 10.0
+
+    - name: RSDA_base_arm_left
+      body1: base
+      body2: arm_left
+      location: [9.5, 0, 4.0]
+      axis: [0, 1, 0]
+      free_angle: 0.0
+      spring_coefficient: 100.0
+      damping_coefficient: 10.0
+
+  # Time-varying forces:
+  # base: +Z cos(t); right slider: +X cos(t); left slider: -X cos(t)
+  motors:
+    - name: M_base_z_force
+      type: LINEAR
+      body1: base
+      body2: ground
+      location: [10, 0, 6]
+      axis: [0, 0, 1]                 # along +Z
+      actuation_type: FORCE
+      guide: FREE
+      actuation_function:
+        type: SINE
+        amplitude: 1.0
+        frequency: 0.1591549431       # 1/(2π) Hz -> cos(t)
+        phase: 1.5707963268
+
+    - name: M_slider_right_x_force
+      type: LINEAR
+      body1: slider_right
+      body2: ground
+      location: [20.5, 0, 4.0]
+      axis: [1, 0, 0]                 # along +X
+      actuation_type: FORCE
+      guide: FREE
+      actuation_function:
+        type: SINE
+        amplitude: 1.0
+        frequency: 0.1591549431
+        phase: 1.5707963268
+
+    - name: M_slider_left_x_force
+      type: LINEAR
+      body1: slider_left
+      body2: ground
+      location: [-0.5, 0, 4.0]
+      axis: [1, 0, 0]                 # along +X
+      guide: FREE
+      actuation_type: FORCE
+      actuation_function:
+        type: SINE
+        amplitude: -1.0               # -cos(t)
+        frequency: 0.1591549431
+        phase: 1.5707963268

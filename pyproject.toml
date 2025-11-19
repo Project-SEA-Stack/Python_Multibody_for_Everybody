@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multibody4everybody"
+version = "0.1.0"
+description = "Symbolic multibody dynamics framework"
+authors = [{name = "Your Name"}]
+dependencies = [
+    "numpy",
+    "scipy",
+    "sympy",
+    "pandas",
+    "matplotlib",
+    "networkx"
+]
+
+[tool.setuptools]
+package-dir = {"" = "source"}
+
+[tool.setuptools.packages.find]
+where = ["source"]

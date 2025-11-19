@@ -1,0 +1,58 @@
+﻿chrono-version: "9.0"
+model:
+  name: demo_MBS_revolute
+  angle_degrees: false
+
+  bodies:
+    - name: ground
+      fixed: true
+      location:    [0, 0, 0]
+      orientation: [1, 0, 0, 0]         # quaternion [e0,e1,e2,e3]
+      # inertia not required for fixed body
+      visualization:
+        shapes:
+          - type: BOX
+            dimensions: [1., 1, 0.01]
+            location: [0, 0., 0]
+            orientation: [0, 0, 0]
+            color: [0.4, 0.4, 0.4]
+
+    - name: link
+      # put the body reference at its COM, 0.5 m below the hinge (so hinge is at world origin)
+      location:    [0, 0, -0.5]
+      orientation: [1, 0, 0, 0]
+      initial_angular_velocity: [0, 0, 0]
+      initial_linear_velocity: [0, 0, 0]
+      mass: 1.0
+      inertia:
+        moments:  [1,1,1]    # example values; replace with your actual moments
+        products: [0.0, 0.0, 0.0]
+      visualization:
+        shapes:
+          - type: BOX
+            dimensions: [0.1, 0.1, 1.0] # [length, width, height]
+            location: [0, 0, 0]         # centered at COM
+            orientation: [1, 0, 0, 0]
+            color: [0.2, 0.6, 0.9]
+
+  joints:
+    - name: hinge
+      type: REVOLUTE
+      body1: ground
+      body2: link
+      location: [0, 0, 0]               # joint location in the model (global) frame
+      axis:     [0, 1, 0]               # hinge axis (global z)
+
+  motors:
+    - name: torque_motor
+      type: ROTATION
+      body1: ground
+      body2: link
+      # Apply at link CG (the motor acts along this line). Axis is GLOBAL X.
+      location: [0, 0, 0]
+      axis: [0, 1, 0]
+      actuation_type: FORCE
+      actuation_function:
+        type: POLYNOMIAL
+        coefficients: [3.0, 0.1, 0.0]  # [a0, a1, a2] for a0 + a1*t + a2*t^2
+      guide: FREE
