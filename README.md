@@ -21,8 +21,8 @@ To install using either `conda` or `pip`, run:
 
 ```bash
 # Clone the repo and enter the directory
-git clone https://github.com/Project-SEA-Stack/Python_multibody_dyamics.git
-cd Python_multibody_dyamics
+git clone https://github.com/Project-SEA-Stack/Python_Multibody_for_Everybody
+cd Python_Multibody_for_Everybody
 ```
 
 CONDA
@@ -43,7 +43,7 @@ pip install .
 To verify geometry and correct implementation of an example:
 
 ```bash
-python Examples/spiderfloat.py
+python Examples_native/spiderfloat.py
 
 # or
 cd Examples
