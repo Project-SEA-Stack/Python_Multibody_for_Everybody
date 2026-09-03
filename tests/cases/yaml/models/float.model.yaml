@@ -1,0 +1,57 @@
+model:
+  name: "yaml_float"
+
+  # ---------------- Bodies ----------------
+  bodies:
+    - name: ground
+      fixed: true
+      location: [0, 0, 0]
+      orientation: [1, 0, 0, 0]         # quaternion [e0,e1,e2,e3]
+
+    - name: float
+      fixed: false
+      location: [1.0, 0.0, 1.0]        # matches mbody1.SetPos(...)
+      orientation: [1, 0, 0, 0]       # quaternion [e0,e1,e2,e3]
+      mass: 1.0
+      inertia:
+        moments: [1,1,1]    # simple placeholder inertia
+      visualization:
+        - type: "box"
+          dimensions: [1.5, 0.5, 0.5]
+          location: [0, 0, 0]
+          orientation: [1, 0, 0, 0]
+          color: [0.7, 0.7, 0.7]
+
+    - name: pendulum
+      fixed: false
+      location: [1.0, 0.0, 2.0]        # matches mbody2.SetPos(...)
+      orientation: [1, 0, 0, 0]       # quaternion [e0,e1,e2,e3]
+      mass: 1.0
+      inertia:
+        moments: [1,1,1]
+      visualization:
+        - type: "box"
+          dimensions: [0.25, 0.25, 1.5]
+          location: [0, 0, 0]
+          orientation: [1, 0, 0, 0]
+          color: [0.6, 0.6, 0.6]
+
+  # ---------------- Joints ----------------
+  joints:
+    - name: link_joint
+      type: REVOLUTE
+      body1: float
+      body2: pendulum
+      location: [1.0, 0.0, 1.25]       # global frame, as in your ChFramed(...)
+      axis: [0, 1, 0]                   # rotate in XZ plane (Y out of plane)
+
+  # ---------------- Loads (global force with sinusoidal modulation) ----------------
+  body_loads:
+    - name: force_on_link
+      type: FORCE
+      body: float
+      point: [0, 0, 0.]             # point of application in body frame (COM is at [0, -0.5, 0])
+      local_point: true                # point is given in local (body) frame
+      load:   [1, 0, 0]               # force vector in global frame
+      local_load: false            # load vector is given in global frame
+      

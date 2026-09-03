@@ -1,0 +1,70 @@
+﻿chrono-version: "9.0"
+model:
+  name: double_pendulum
+  angle_degrees: false
+
+  bodies:
+    - name: ground
+      fixed: true
+      location:    [0, 0, 0]
+      orientation: [1, 0, 0, 0]         # quaternion [e0,e1,e2,e3]
+      # inertia not required for fixed body
+      visualization:
+        shapes:
+          - type: BOX
+            dimensions: [1., 1, 0.01]
+            location: [0, 0., 0]
+            orientation: [0, 0, 0]
+            color: [0., 0., 0.]
+
+    - name: pendulum1
+      # put the body reference at its COM, 0.5 m below the hinge (so hinge is at world origin)
+      location:    [0, 0, 0.]
+      orientation: [0, -0.4, 0]
+      com:
+        location: [0, 0, -0.5]               # COM is 0.5 m below the body reference
+      mass: 1.0
+      inertia:
+        moments:  [1,1,1]    # example values; replace with your actual moments
+        products: [0.0, 0.0, 0.0]
+      visualization:
+        shapes:
+          - type: BOX
+            dimensions: [0.1, 0.1, 1] # [length, width, height]
+            location: [0, 0, -0.5]         # centered at COM
+            orientation: [0,0, 0]
+            color: [0.2, 0.6, 0.9]
+
+    - name: pendulum2
+      # put the body reference at its COM, 0.5 m below the hinge (so hinge is at world origin)
+      location:    [0, 0, 0]
+      orientation: [0,-0.4, 0]
+      com:
+        location: [0, 0, -1.5]               # COM is 0.5 m below the body reference
+      mass: 1.0
+      inertia:
+        moments:  [1,1,1]    # example values; replace with your actual moments
+        products: [0.0, 0.0, 0.0]
+      visualization:
+        shapes:
+          - type: BOX
+            dimensions: [0.1, 0.1, 1.] # [length, width, height]
+            location: [0, 0, -1.5]         # centered at COM
+            orientation: [0, 0., 0]
+            color: [0.9, 0.6, 0.9]
+
+  joints:
+    - name: rev1
+      type: REVOLUTE
+      body1: ground
+      body2: pendulum1
+      location: [0, 0, 0]               # joint location in the model (global) frame
+      axis:     [0, 1, 0]               # hinge axis (global z)
+
+    - name: rev2
+      type: REVOLUTE
+      body1: pendulum1
+      body2: pendulum2
+      location: [0.3894183423, 0 , -0.921060994]               # joint location in the model (global) frame # TODO: correct 
+      axis:     [0, 1, 0]               # hinge axis (global z)
+     

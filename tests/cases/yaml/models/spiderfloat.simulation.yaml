@@ -1,0 +1,23 @@
+chrono-version: 9.0
+
+simulation:
+  # Required parameters
+  time_step: 0.01
+  contact_method: SMC
+
+  # Optional parameters
+  end_time: 10.0
+  enforce_realtime: false
+  gravity: [0, 0., 0.]
+  integrator_type: HHT
+
+  # Visualization settings
+  visualization:
+      type: PRIMITIVES   
+      render_fps: 120
+      enable_shadows: true
+      camera:
+          vertical: Z
+          location: [3,0.,4]
+          target: [0, 0, 0]
+

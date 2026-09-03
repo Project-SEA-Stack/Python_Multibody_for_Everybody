@@ -25,6 +25,9 @@ Several open-source MBD libraries already exist:
 
 - **Chrono** is a powerful C++-based library with many add-on modules, but it does not provide symbolic equations of motion or use reduced-coordinate formulations.
 - **PyDy** (Python Dynamics) uses Kane’s method and offers symbolic equation generation—but it often requires deep familiarity with multibody theory and SymPy mechanics.
+- **MBDyn** Uses a redundant-coordinate, monolithic differential-algebraic formulation, with kinematic constraints and reaction forces introduced through Lagrange multipliers. It is especially established in aerospace, rotorcraft and aeroelastic simulations.
+- **Simbody** Uses minimal/generalized internal coordinates and Featherstone-style recursive rigid-body algorithms, giving roughly $\(O(n)\)$ computation for tree systems. Additional loop and user constraints restrict the motion to a constraint manifold.
+- **Exudyn** Supports both minimal and redundant generalized-coordinate formulations, expressed as second-order ODEs coupled to algebraic constraint equations. For flexible bodies it supports formulations including ANCF, floating-frame-of-reference and reduced-order models.
 
 In contrast, **Multibody4Everybody** is built for:
 
@@ -35,7 +38,7 @@ In contrast, **Multibody4Everybody** is built for:
 
 ## How Multibody4Everybody Works
 
-To use the code, all you need is a single input file. In short, you define the kinematics of the system (a snapshot at its initial condition) 
+To use the code, all you need is a single input file, native python or YAML file. In short, you define the kinematics of the system (a snapshot at its initial condition) 
 and the forces and points where forces are applied.
 
 This file contains structured information about your mechanical system:

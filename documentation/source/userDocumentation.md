@@ -1141,145 +1141,279 @@ This portion contains the slides presenting this example. The slides with the an
 </object>
 ```
 
-## Validation of EOM derivation 
+## Linear hydrodynamics examples
 
-### Example 1: Oyster device
-This example is done all symbolically and verified against one of the examples in Ginsberg’s Advanced Dynamics Text book. 
-The example introduces some simplifications that the code doesn’t, therefore for valid comparison some numerical values 
-must be substituted. The main assumption is small angle variation around equilibrium position. The derivation of the kinetic and potential energy is defined below for small $\theta$ and assuming $cos^2 \beta = \frac{b^2}{(a^2 + b^2)}$
-
-The problem statement aims to find the equations of motion assuming the springs are initially in tension. Our goal is to find both the right and left hand sides of the equation. The sketch is as follows,
-
-<!-- ![OYSTER problem statement](/_static/figs/Oyster_problemStatement.png) -->
-
-```{figure} _static/figs/Oyster_problemStatement.png
-:width: 60%
-:align: center
+```{note}
+This is part of the M4E v2.0.
 ```
 
-Using M4E, the equations of motion are:
+The linearization workflow allows a nonlinear multibody system to be coupled with linear
+frequency-domain hydrodynamics (radiation, diffraction, hydrostatics) computed with
+[Capytaine](https://capytaine.org/stable/) through the `HydroLinearMCKF` adapter, plus any
+number of additional linear force contributions (mooring, viscous damping, PTOs, ...) through the
+same adapter interface. The three examples below build up this workflow from a minimal
+single-body system to a multibody system with several custom adapters and a frequency-domain
+impedance calculation. An example using Moorpy is also available in the [Github repository](https://github.com/Project-SEA-Stack/Python_multibody_dyamics/blob/main/Examples_linearization/single_body_moorpy/main_linearization.py). Every linearization problem follows the following steps:
 
-:label: eq:eom_ginsberg
-EOM = \frac{m L^2}{3},\ddot{\theta}
+1. Define the M4E inputs (same as M4E v1.0)
+2. Define the hydrodynamic inputs (new in M4E v2.0)
+3. Import M4E and hydrodynamic inputs in main script (same as M4E v1.0)
+4. Instantiate the multibody system (same as M4E v1.0)
+5. Instantiate the linearization manager (new in M4E v2.0)
+6. Register the linearization adapter(s) (similar to external forces manager in v1.0)
+7. Solve the problem of interest (new in M4E v2.0):
+    * Solve linear ODE system 
+    * Solve in frequency domain, FD
 
-* \left[
-  \frac{2,a^{2} b^{2} k l_0}{(a^{2} + b^{2})^{3/2}}
+### Example 1: Minimal linearized hydrodynamics (WaveBot)
 
-* \tfrac{1}{2} m_1 g L
-  \right]\theta = 0
+<!-- TODO: figure showing the WaveBot mesh/geometry -->
 
-Consequently, the stiffness matrix K can be found in our code by taking $\partial{EOM} / \partial{\theta}$ at equilibrium as: 
+This example is the smallest possible linearized hydrodynamics setup: a single body attached to
+ground through one prismatic joint (heave only), radiating and diffracting waves computed from a
+simple cylinder + cone mesh.
 
-:label: eq:k_ginsberg
-K = \left[
-\frac{2,k,l_0,(a,\cos\beta)^2}{\sqrt{a^2 + b^2}}
-
-* \tfrac{1}{2},m,g,L
-  \right]
-
-For small oscillations, one can write
-
-:label: eq:cos_beta
-\cos\beta = \frac{b}{\sqrt{a^2 + b^2}}
-
-Substituting equation {eq}eq:cos_beta into equation {eq}eq:k_ginsberg
-yields the same stiffness expression reported in Ginsberg’s book.
-
-This example is defined in the *Example* folder under the name “Flap_sandia”. To run it, update the main file to:
+`Examples_linearization/wavebot/M4E_inputs.py` defines the multibody model:
 
 ```python
-from Examples import Flap_sandia as ex
+joints              = [[0,1]]
+types               = ['P']
+parent_cg_to_joint  = [[0,0]]
+joint_to_child_cg   = [[np.nan, np.nan]]
+prismatic_direction = [[0,1]]
+prismatic_direction = normalize_prismatic(prismatic_direction)
 ```
 
-After running the example, we can compare the EOM given by the code:
+`Examples_linearization/wavebot/hydro_inputs.py` defines the wave conditions and the mesh, using
+[`wecopttool`](https://sandialabs.github.io/WecOptTool/) or using `numpy` to generate the frequency vector and the
+regular wave, and `pygmsh`/`gmsh` to build the cylinder-cone hull:
 
 ```python
-sym.simplify(MBDsys.ReducedM)
+wavefreq    = 0.3 # Hz
+nfreq       = 2
+freq        = wot.frequency(wavefreq, nfreq, False) # False -> no zero frequency
+
+amplitude   = 0.0625 # m
+waves       = wot.waves.regular_wave(wavefreq, nfreq, wavefreq, amplitude, phase=0, wavedir=0)
 ```
 
-Where we get the expression:
-
-$$ReducedM = (m_1*L^2)/4 + J_1$$
-
-Recall that the moment of inertia, $J_1$, is always around the CG and for a bar is $J_1 = m_1L^2/12$. So adding up both terms, the result matches the one from the book.
-
-*Right-hand-side:*
-
-The first step is to declare all necessary variables as symbolic:
+The mesh is packed into the `body_inputs` dictionary that `HydroLinearMCKF` expects, keyed by body
+index (matching the multibody body numbering), together with the mass/inertia used for the
+linearized rigid-body matrices:
 
 ```python
-from sympy import symbols, cos, diff
-
-# define a symbol q
-Theta_1, a, b, k, l0, m1, beta, g, L = symbols('Theta_1 a b k l0 m1 beta g L', real=True)
+body_inputs = {
+    1: {
+        "name": "wavebot",
+        "mesh": mesh,
+        "mesh_reference": "absolute",
+        "inertia_diag": [m_wb, m_wb, m_wb, J_wb, J_wb, J_wb],
+    },
+}
 ```
 
-The expression from the book, for the right-hand-side without including $\theta$, i.e. a stiffness, K, can be written as:
-
-```python 
-book_eq = 2 * k * l0 * (a * cos(beta))**2 / (a**2 + b**2)**0.5 - 0.5 * m1 * g * L
-```
-
-The equivalent stiffness from the code can be compute as:
+To run this example, swap the "Example to import" lines at the top of the root
+`main_linearization.py` to point at the new folder:
 
 ```python
-K = -sym.diff(MBDsys.Right_side,MBDsys.Q[0])
+############ Example to import ############
+from Examples_linearization.wavebot import M4E_inputs as ex
+from Examples_linearization.wavebot.hydro_inputs import waves, body_inputs, freq, amplitude, m0, J0
 ```
 
-Where the minus comes from being on the other side of the equal sign. Since comparing these two equations in analytic form is not an easy taks (left to the adventourous reader) we provide some numerical values for comparison. 
+The rest of the main file follows the same three steps used by every linearization example:
 
-$a = 0.5$,
-$b = 1$,
-$k = 1$,
-$L = 2$,
-$m_1 = 1$,
-$l0 = \sqrt{(a^2 + b^2)}$,
-$\beta = cos(\frac{b^2}{a^2 + b^2})^{-1}$
-
-<span style="color:red">Double check cos the answer matched at -9.41</span>
+1. Build the multibody system and the equilibrium position:
 
 ```python
-book_eq.subs({L: 2,  m1: 1, k: 1, a: 0.5, b: 1, l0: np.sqrt(1.25), beta: betaVal, g:9.81}).evalf(4) = -9.49
+MBDsys = MbdSystem.from_example(ex)
+
+q0 = (MBDsys.ic - ex.ic)[:len(MBDsys.Q)] # Numerical values can be passed
+mainNumVars = ex.ic.copy()
 ```
 
-The solution in the book is valid for small values of $\theta$, as a result we substitute it by $\theta = 0.001$
+2. Create the `LinearizationManager` and register the hydrodynamics adapter:
 
 ```python
-K.subs({L: 2,  m1: 1, k: 1, a: 0.5, b: 1, l0: np.sqrt(1.25), beta: betaVal, MBDsys.Q[0]:1e-3}).evalf(4) = -9.41
+LinManager = LinearizationManager(MBDsys, q0, mainNumVars, m0, J0, print_sym_matrices=False)
+
+# Calculatiosn of added mass, radiation damping, hydrostatic stiffness and excitation force terms in cartesian coordinates
+hydroAdapter = HydroLinearMCKF(
+        MBDsys,
+        (mainNumVars, m0, J0),
+        is_2D=False,
+        omega_r=waves.omega.values,
+        body_inputs=body_inputs,
+        wave_amplitude=waves.attrs['Amplitude (m)'],
+        equilibrium_pos=q0,
+        )
+
+# Transformation of hydrodynamic terms from cartesian to joint coordinates  
+LinManager.register(hydroAdapter)
 ```
 
-Since both the right-hand-side and left-hand-side match we can conclude that the code is properly writing the equations of motion for this example.
-
-#### **Step-by-step PPT**
-
-This portion contains the slides presenting this example. The slides with the animations are in TODO: ref to slides.
-
-The following slides include also a torsion spring at the hinge. To fully reproduce the same example,
-leave the field empty. 
+3. Compile an operating point (a driving wave frequency and, optionally, an amplitude ramp), then
+   integrate the linearized equations of motion in time and plot the response:
 
 ```python
-Force['TorsionSpring'] = []
+omega0 = waves.omega.values[0]
+LinManager.compile_operating_point(omega0, eq_tol=1e-6, eq_mode="warn", ramp_T=30.0)
+
+result = LinManager.integrate_linear_system(
+    tspan=ex.tspan,
+    dt=ex.TimeStep,
+    method="RK45",
+    solver_opts={'rtol': 1e-6, 'atol': 1e-9},
+)
+
+com_positions, com_velocities, angle_positions, _ = mbd.evaluate_trajectories(MBDsys, result, mainNumVars.copy())
 ```
 
-```{raw} latex
-\includepdf[
-    pages=-,
-    nup=1x2,
-    frame=true,
-    scale=0.88
-]{Flap.pdf}
+`com_positions`, `com_velocities` and `angle_positions` are then plotted the same way as in the
+nonlinear examples above.
+
+### Example 2: Detailed multibody inputs and custom force adapters (FOSWEC)
+
+<!-- TODO: figure showing the FOSWEC mesh/geometry -->
+
+This example uses the same 3-body FOSWEC platform-and-flaps kinematic structure introduced in
+"Detailed examples > Example 1: FOSWEC" above, this time coupled to linear hydrodynamics and two
+additional custom linear force adapters (mooring stiffness/damping and extra viscous damping). It
+is a standalone runnable file: `Examples_linearization/foswec/FOSWEC_main_linear.py`.
+
+```{note}
+The physical parameters used in `Examples_linearization/foswec/` (`M4E_inputs.py` and
+`hydro_inputs.py`) are **not** the same as the WEC-Sim-validated parameter set used by the
+regression tests in `tests/cases/linearization/foswec/` (see `test_foswec_rao.py` /
+`test_foswec_td.py`). If you need parameters that have been verified against WEC-Sim, use the
+copy under `tests/cases/linearization/foswec/` instead.
 ```
 
-```{only} html
+`M4E_inputs.py` defines the same joint topology as the nonlinear FOSWEC example (a floating
+platform with two revolute-jointed flaps), with its own CG heights and hinge offsets:
 
-```{raw} html
-<object data="_static/slides/Flap.pdf"
-        type="application/pdf"
-        width="100%"
-        height="800px">
-  <p>Your browser doesn’t support embedded PDFs.
-     <a href="_static/slides/Flap.pdf">Download the slides</a>.</p>
-</object>
+```python
+joints              = [[0, 1],[1, 2],[1, 3]]
+types               = ['F', 'R', 'R']
+parent_cg_to_joint  = [[0, platformCG[2]],
+                       [flap1CG[0],-platformCG[2]-flapHingeDepth],
+                       [flap2CG[0],-platformCG[2]-flapHingeDepth]]
+joint_to_child_cg   = [[np.nan, np.nan],
+                       [0,flapHingeDepth+flap1CG[2]],
+                       [0,flapHingeDepth+flap2CG[2]]]
+prismatic_direction = [[np.nan, np.nan],[np.nan, np.nan],[np.nan, np.nan]]
+prismatic_direction = normalize_prismatic(prismatic_direction)
 ```
+
+`hydro_inputs.py` builds a more detailed mesh than the WaveBot example (platform frame with
+cutout, four support columns, a DAQ box, and two flaps), and clips each body's mesh at the
+waterline with Capytaine before it is handed to `HydroLinearMCKF`:
+
+```python
+fb_platform = cpt.FloatingBody(mesh=mesh_platform, name="platform")
+fb_platform = fb_platform.keep_immersed_part()
+mesh_platform_clipped = fb_platform.mesh
+```
+
+Doing this clipping in the input file (rather than inside `HydroLinearMCKF`) keeps the adapter
+mesh-agnostic and makes it explicit which part of each mesh is actually submerged and used for the
+BEM solve.
+
+**Custom adapters.** Any additional linear force contribution — mooring, viscous damping, a PTO,
+etc. — can be registered alongside the hydrodynamics adapter as long as it satisfies the
+`LinearizationAdapter` protocol: a `.name` attribute, and a
+`.frequency_domain_MCKF(omega) -> (M, C, K, F)` method returning the mass, damping and stiffness
+matrix contributions plus a forcing dict with `'dc'` and `'phasor'` entries, all in the reduced
+(joint) coordinate ordering. `FOSWEC_main_linear.py` defines two such adapters:
+
+```python
+class CustomMooring():
+        name = "Mooring"
+
+        def __init__(self):
+                pass
+
+        def frequency_domain_MCKF(self, omega):
+                M = np.zeros((9,9))
+                K = np.diag([8e3, 2e5, 2e5, 0, 0, 0, 0, 0, 0])
+                C = np.diag([8e2, 1e4, 1e4, 0, 0, 0, 0, 0, 0])
+                F = {'dc': [0, 0, 0, 0, 0, 0, 0, 0, 0], 'phasor': np.zeros(9)} # Pre-tension
+
+                return M, C, K, F
+
+class CustomViscousDamping():
+        name = "ViscousDamping"
+
+        def __init__(self):
+                pass
+
+        def frequency_domain_MCKF(self, omega):
+                M = np.zeros((9,9))
+                K = np.diag([0, 0, 0, 0, 0, 0, 0, 0, 0])
+                C = np.diag([0, 0, 0, 0, 0, 10, 0, 0, 10])
+                F = {'dc': [0, 0, 0, 0, 0, 0, 0, 0, 0], 'phasor': np.zeros(9)} # Pre-tension
+
+                return M, C, K, F
+```
+
+Both adapters are registered on the `LinearizationManager` in addition to the hydrodynamics
+adapter:
+
+```python
+hydroAdapter   = HydroLinearMCKF(
+        MBDsys,
+        (mainNumVars, m0, J0),
+        is_2D=False,
+        omega_r=waves.omega.values,
+        body_inputs=body_inputs,
+        wave_amplitude=waves.attrs['Amplitude (m)'],
+        equilibrium_pos=q0,
+        )
+mooringAdapter = CustomMooring()
+dampingAdapter = CustomViscousDamping()
+
+LinManager.register(hydroAdapter)
+LinManager.register(mooringAdapter)
+LinManager.register(dampingAdapter)
+```
+
+From here the compile/integrate/plot steps are identical to Example 1.
+
+### Example 3: Frequency-domain analysis — computing the impedance matrix
+
+<!-- TODO: figure showing an example RAO/impedance plot -->
+
+The main file remains the same as Example 2 (`FOSWEC_main_linear.py`) — this example only adds a
+few lines **after** the `LinManager.register(...)` calls, before compiling an operating point.
+Instead of (or in addition to) integrating the linear system in time, the registered M, C, K, F
+contributions from every adapter can be assembled at any set of frequencies and solved directly
+in the frequency domain:
+
+```python
+#%% Define the impedance matrix
+omega = waves.omega.values
+
+# Instantiate the total linearized system with attributes M,C,K,F
+FD_system = LinManager.assemble_frequency_domain(omega)
+
+# Extract linearized matrices
+M = FD_system.M
+C = FD_system.C
+K = FD_system.K 
+F = FD_system.Fhat
+
+# Impedance matrix in joint coordinates
+impedance_reduced = M * (1j * omega[:, None, None]) + C - 1j * K[None, :, :] * (1/omega)[:, None, None]
+```
+
+`LinManager.assemble_frequency_domain(omega)` sums the `M, C, K, Fhat` contributions from every
+registered adapter (hydrodynamics, mooring, damping, ...) at the given frequency `omega`. The
+matrix `Z = 1j*omega * M + C - 1j * K / omega` is the system's mechanical **impedance** (or dynamic
+stiffness) matrix in the reduced joint coordinates: it relates a complex forcing phasor `Fhat` to
+the resulting complex response phasor `qhat = Z^-1 @ Fhat` at that frequency. Dividing the
+response amplitude by the wave amplitude gives the response-amplitude-operator (RAO) shown above.
+
+This same impedance matrix is the starting point for computing quantities such as absorbed PTO
+power at each frequency (not shown here); see [main_linearization.py's](https://github.com/Project-SEA-Stack/Python_multibody_dyamics/blob/main/main_linearization.py) frequency-domain block for a complete working reference.
 
 

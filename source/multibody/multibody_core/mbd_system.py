@@ -173,7 +173,7 @@ class MbdSystem:
 
         t0_int = time()
         sol = solve_ivp(fun, tspan, self.ic,
-                        t_eval   = np.arange(tspan[0], tspan[1]-1e-8, dt),
+                        t_eval   = np.arange(tspan[0], tspan[1]+dt, dt) if dt is not None else None,
                         method   = algorithm, rtol=rtol, atol=atol)
 
         t_int = time() - t0_int
@@ -258,13 +258,15 @@ class MbdSystem:
                 self.Body_col, self.Vel, self.Reference_frame_Origin)
 
         # energies & EOM ----------------------------------------------
-        self.Energy, self.M, self.m, self.J = systems_energy(
+        self.Energy, self.M = systems_energy(
                 NBodies, self.Q, self.QD, self.R,
                 self.Points_All['CG'], self.g, self.gVec)
         
         self.Energy += SpringPE
+        self.m = sym.Matrix(sym.symbols(f"m1:{NBodies+1}", real=True))
+        self.J = sym.Matrix(sym.symbols(f"J1:{NBodies+1}", real=True))
 
-        ReducedM        = self.R.T * self.M * self.R
+        # ReducedM        = self.R.T * self.M * self.R
         Fgravity_mat    = self.g * self.m.multiply_elementwise(sym.Matrix(self.gVec)) * sym.Matrix([0,-1,0]).T
         Fgravity        = Fgravity_mat.reshape(Fgravity_mat.rows * Fgravity_mat.cols,1)
 
@@ -279,7 +281,7 @@ class MbdSystem:
         self.ForceAllCombined   = ForceExternal + Fgravity
         Right_side_1            = - self.R.T * self.M * self.RD * sym.Matrix(self.QD)
         self.Right_side         = Right_side_1 + self.R.T * self.ForceAllCombined
-        self.ReducedM           = ReducedM
+        # self.ReducedM           = ReducedM
 
         t_EOM = time() - t0_EOM
         print(f'Symbolic EOM computation finished in:\t\t {t_EOM:.3f} seconds')
@@ -326,8 +328,8 @@ class MbdSystem:
                                  self.ForceAllCombined, modules)
         self.M_func         = sym.lambdify(self.mainSymVars + list(self.m.T)+list(self.J.T),
                                            self.M, modules) 
-        self.ReducedM_func  = sym.lambdify(self.mainSymVars + list(self.m.T)+list(self.J.T),
-                                           self.ReducedM, modules)
+        # self.ReducedM_func  = sym.lambdify(self.mainSymVars + list(self.m.T)+list(self.J.T),
+        #                                    self.ReducedM, modules)
         self.Right_side_func= sym.lambdify(self.mainSymVars + list(self.m.T)+list(self.J.T),
                                            self.Right_side, modules)
         self.Energy_func    = sym.lambdify(self.mainSymVars + list(self.m.T)+list(self.J.T),

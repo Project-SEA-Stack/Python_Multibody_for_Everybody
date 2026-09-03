@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.abspath('../../source'))  # adjust based on location
 project = 'Python M4E'
 copyright = '2025, Alvaro Diaz Flores Caminero, Sahand Sabet'
 author = 'Alvaro Diaz Flores Caminero, Sahand Sabet'
-release = 'v1'
+release = 'v2.0.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -61,6 +61,8 @@ pygments_style = 'sphinx'   # or any other Pygments style you like
 # -- stop Sphinx choking on missing third-party imports: --
 autodoc_mock_imports = [
     'moordyn',
+    'capytaine',
+    'xarray',
     ]
 
 # -- ignore your Validation examples (they try to load .mat) --

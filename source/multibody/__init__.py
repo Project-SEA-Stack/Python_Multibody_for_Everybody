@@ -10,6 +10,7 @@ from .multibody_core.mbd_system                 import MbdSystem
 from .multibody_core.rigid_body_integrator      import integrate_dynamics
 from .multibody_core.post_process               import evaluate_trajectories
 from .ext_forces_manager.coupling_main          import ExternalForcesManager
+from .linearization.linearize_eom               import linearize_mbd
 from .yaml_parser.yaml_adapter                  import load_yaml_as_example
 
 # — Plotting namespace -------------------------------
@@ -35,6 +36,7 @@ __all__ = [
   "systems_energy",
   "symvars_definition",
   "evaluate_trajectories",
+  "linearize_mbd",
   "load_yaml_as_example",
   # namespaces
   "plot",

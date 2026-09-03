@@ -8,34 +8,71 @@ Validated
 
 # Python libraries
 import numpy as np
+import sympy as sym
 import matplotlib.pyplot as plt
+from time import time
 
 # Custom modules
 from multibody import MbdSystem    
 import multibody as mbd
+from multibody import load_yaml_as_example
 
 ############ Example to import ############
-from Examples_native import _1_Double_pendulum as ex
+# from Examples_mbd import n_pendulum as ex
 
-############### Beginning of the multibody simulation ###############
+############ Example to import ############
+folder  = 'Examples_yaml/'
+ex_file = 'slider_w_dpend'  # Example file to import
+# Load the example from the YAML file
+ex      = load_yaml_as_example(folder + ex_file)
+
 # 1- Initialize the Multibody system 
 MBDsys  = MbdSystem.from_example(ex)          
 
-# 2 - Define initial numerical values
+# 3 - Define initial numerical values
 mainNumVars = np.hstack((MBDsys.ic, ex.ForcesPointsNum, ex.BodyDataNum))
 
 print('Finished initialization')
-
 # 3 - Integrate over time
 sol     = MBDsys.integrate(mainNumVars, ex.m0, ex.J0, 
                            tspan=ex.tspan, dt=ex.TimeStep)  # ❷ run
 
 
-com_positions, com_velocities, joint_positions, omega = mbd.evaluate_trajectories(MBDsys, sol, mainNumVars)
+com_positions, com_velocities, angle_positions, joint = mbd.evaluate_trajectories(MBDsys, sol, mainNumVars)
 
-#%% ############## Plotting ###############
+############### Plotting ###############
 # Multibody connections graph plot
-MBDsys.graph.show()
+# MBDsys.graph.show()
+
+# Create figure with 3 subplots for x, z, and pitch DOF
+fig, axes = plt.subplots(3, 1, figsize=(10, 8))
+
+# Plot x position for all bodies
+for body in range(len(com_positions[1])):
+        axes[0].plot(sol.t, com_positions[:, body, 0], label=f'Body {body+1}')
+        axes[1].plot(sol.t, com_positions[:, body, 1], label=f'Body {body+1}')
+        axes[2].plot(sol.t, angle_positions[:, body]*180/np.pi, label=f'Body {body+1}')
+
+axes[0].set_xlabel('Time [s]')
+axes[0].set_ylabel('x [m]')
+axes[0].set_title('X Position')
+axes[0].legend()
+axes[0].grid(True)
+
+axes[1].set_xlabel('Time [s]')
+axes[1].set_ylabel('z [m]')
+axes[1].set_title('Z Position')
+axes[1].legend()
+axes[1].grid(True)
+
+axes[2].set_xlabel('Time [s]')
+axes[2].set_ylabel('Pitch [deg]')
+axes[2].set_title('Pitch Angle')
+axes[2].legend()
+axes[2].grid(True)
+
+plt.tight_layout()
+plt.show()
 
 # Plot energy
 Em_num = []
@@ -75,7 +112,7 @@ fig, ax = mbd.plot.plot_multibody_system(
     dark_mode       = False  # Or True for dark background
 )
 
-fig.tight_layout()
+# plt.tight_layout()
 plt.show()  # or fig.savefig('snapshot.png')
 
 #%% Animation
@@ -87,7 +124,7 @@ if ex.animation_on:
         mainNumVars     = mainNumVars.copy(),
         frame_bounds    = frame_bounds,
         save_path       = ex.SaveMovieOn,   # ".gif" ➜ GIF  ·  None ➜ just show
-        fps             = 10,
+        fps             = 100,
         loop            = False,
     )
 plt.close()

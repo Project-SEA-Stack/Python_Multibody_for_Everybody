@@ -62,4 +62,4 @@ def systems_energy(NBodies, Q, QD, R, CGpos, g, gVec):
     # Total mechanical energy
     Em = K[0] + U  # K is a 1x1 matrix → extract scalar
 
-    return Em, M, m, J
+    return Em, M

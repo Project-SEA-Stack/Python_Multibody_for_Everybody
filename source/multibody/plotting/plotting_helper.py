@@ -117,7 +117,7 @@ def damper_plot(pt1, pt2, ax, color='m', linewidth=1.2):
     dir_perp  = np.array([ direction[1], -direction[0] ])
 
     # box fractions & sizes (same as your MATLAB L1…L5)
-    L1, L2, L3, L4, L5 = 0.48, 0.5, 0.1, 0.05, 0.05
+    L1, L2, L3, L4, L5 = 0.48, 0.5, 2*0.1, 2*0.05, 0.05
 
     P3  = p1 + L1 * direction * module
     P4  = p1 + L2 * direction * module

@@ -1,15 +1,9 @@
-Validation package
-==================
+Validation
+==========
 
-The validation package compares the CG positions, Joint location, R-matrix and 
-\dot{R}-matrix for examples 1-8 to some true values. It is also possible to
-compare also the energy of the system to another set of true values, but this is 
-correct only for systems with linear springs and dampers. 
-
-.. autosummary::
-   :toctree: ../_autosummaries
-   :nosignatures:
-
-   multibody.validation.automated_validation
-   multibody.validation.energy_and_ode
+Validation has been migrated from standalone scripts to a self-contained
+pytest suite under ``tests/``.  See the :ref:`Tests <Developer's documentation>`
+section for the full description of the four test suites (MATLAB symbolic,
+MATLAB energy, Chrono regression, YAML parser, and linearization) and
+instructions for running them.
 

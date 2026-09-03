@@ -171,14 +171,17 @@ class ExternalForcesManager:
             Fcart[idx:idx+3, 0] += forceFinal
 
         # -- 2) transform to Q-space ---------------------------------------
-        R_num = self.R_func(*main_num_vars)            # (3N × n_q)
-        Qgen  = R_num.T @ Fcart                        # (n_q × 1)
+        R_num   = self.R_func(*main_num_vars)               # (3N × n_q)
+        RD_num  = self.mbd.RD_func(*main_num_vars)          # (3N × n_q)
+        Qgen    = R_num.T @ Fcart                           # (n_q × 1)
 
         # -- 3) add added mass if any --------------------------------------
         Mred_add = np.zeros((NDOF, NDOF))
         if addedM:
             Madd        = np.sum(addedM, axis=0)              # (3N × 3N)
             Mred_add    += R_num.T @ Madd @ R_num
+
+            Qgen -= R_num.T @ Madd @ RD_num @ qd.reshape((-1,1))
 
         return Qgen, Mred_add
 

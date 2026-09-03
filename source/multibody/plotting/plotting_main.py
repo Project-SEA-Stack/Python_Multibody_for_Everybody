@@ -37,6 +37,7 @@ def plt_template(ax: plt.Axes, dark: bool = False) -> None:
 
     light_fg = "#141414"
     light_bg = "#F2F2F2"
+    light_bg = "#FFFFFF"
     dark_fg  = "#F2F2F2"
     dark_bg  = "#141414"
 
@@ -155,7 +156,7 @@ def plot_multibody_system(
     
     # 3) figure setup
     if new_figure or ax is None:
-        fig, ax = plt.subplots(figsize=(8, 5))
+        fig, ax = plt.subplots(figsize=(9,5))
         plt_template(ax, dark_mode)
     else:
         fig = ax.figure
@@ -170,7 +171,7 @@ def plot_multibody_system(
         ax.set_xlim(all_pts[:,0].min()-pad[0], all_pts[:,0].max()+pad[0])
         ax.set_ylim(all_pts[:,1].min()-pad[1], all_pts[:,1].max()+pad[1])
 
-    ax.set_aspect("equal")
+    # ax.set_aspect("equal")
     ax.set_xlabel("X"); ax.set_ylabel("Z")
     if t_val is not None:
         ax.set_title(f"t = {t_val:.2f}s")
@@ -186,7 +187,7 @@ def plot_multibody_system(
             edgecolors="k",
             label=f"CG body {i+1}"
         )
-        ax.text(x, z, rf'CG$_{{{i+1}}}$', va='bottom', ha='right')
+        ax.text(x, z, rf'CG$_{{{i+1}}}$', va='bottom', ha='left', size='large')
 
     # before your loops
     jo_plotted = False
@@ -214,7 +215,11 @@ def plot_multibody_system(
         if joint.joint_type.value in ('R','P'):
             p, c = joint.parent, joint.child
             t    = joint.joint_type.value
-            ax.text(xj, zj, rf'Jo$({t}_{p},{t}_{c})$', va='bottom', ha='left')
+            if xj-10 <= 0:
+                pos = 'right'
+            else:
+                pos = 'left'
+            ax.text(xj, zj+0.05, rf'Jo$({t}_{p},{t}_{c})$', va='bottom', ha=pos, size='large')
 
 
     # 6) body points & ground
@@ -227,13 +232,13 @@ def plot_multibody_system(
             lbl = "Body Points" if not bd_plotted else None
             ax.scatter(x, z, marker="x", color=c,label=lbl)
             bd_plotted = True
-            ax.text(x, z, rf'BD$_{{{body},{k}}}$', va='top', ha='right')
+            # ax.text(x, z, rf'BD$_{{{body},{k}}}$', va='top', ha='right')
             k += 1
 
     if GR.size:
         ax.scatter(GR[:,0], GR[:,1], s=60, marker="s", color="k", label="GR")
         for m,(xg,zg) in enumerate(GR):
-            ax.text(xg, zg, rf'GR$_{{{m}}}$', va='top', ha='left')  
+            ax.text(xg, zg, rf'GR$_{{{m}}}$', va='top', ha='left', size='large')  
     
     # Plotting forces
     # 1) Determine a reasonable arrow‐scaling based on the domain size
@@ -241,7 +246,7 @@ def plot_multibody_system(
     all_z = np.hstack((CG[:,1], GR[:,1] if GR.size else [], *[mat[:,1] for mat in BD.values()]))
     domain_size = max(np.ptp(all_x), np.ptp(all_z), 1.0)
     # make arrow length ~5% of domain
-    arrow_scale = domain_size * 0.05
+    arrow_scale = domain_size * 0.07
 
     # 2) build the CG‐force array
     cg_forces = []
@@ -262,7 +267,7 @@ def plot_multibody_system(
             CG[cg_bodies,0], CG[cg_bodies,1],             # arrow origins
             cg_forces[:,0], cg_forces[:,1],  # (u,v) = (Fx, Fy)
             angles='xy', scale_units='xy', scale=1/arrow_scale,
-            color='r', width=0.005, label='CG Forces'
+            color='r', width=0.003, label='CG Forces'
         )
 
     # 3) Body‑Defined Point forces (Force_dict["PointsBD"] entries are [body, ptID, Fx, Fy, Mz])
@@ -292,7 +297,7 @@ def plot_multibody_system(
         for pts, _ in Force_dict["TensionSpring"]:
             pt1 = resolve_point(pts[0], CG, BD, GR)
             pt2 = resolve_point(pts[1], CG, BD, GR)
-            xs, ys = spring_coords(pt1, pt2, 0.05, 10)
+            xs, ys = spring_coords(pt1, pt2, 0.05*2, 10)
             ax.plot(xs, ys, "-k", lw=1.2)
     # tension dampers
     if Force_dict.get("TensionDamper"):
@@ -328,6 +333,7 @@ def plot_multibody_system(
         # print(f"Passed current time to MoorDyn is:\t{t_val}")
  
     plt_template(ax, dark_mode)
+    # fig.tight_layout()
     
 
     return fig, ax
