@@ -29,8 +29,8 @@ YAML-based model input, and flexible visualization.
 
 ```bash
 # Clone the repo and enter the directory
-git clone https://github.com/Project-SEA-Stack/Python_Multibody_for_Everybody.git
-cd Python_multibody_dyamics
+git clone https://github.com/Project-SEA-Stack/Python_Multibody_for_Everybody
+cd Python_Multibody_for_Everybody
 ```
 
 **Option 1 — conda (recommended):**
@@ -52,13 +52,17 @@ pip install .      # regular install for users
 
 **Run a multibody dynamics example:**
 ```bash
-# From the repository root
-python -c "
-from Examples_mbd import spiderfloat as ex
-from multibody import MbdSystem, integrate_dynamics
-MBD = MbdSystem.from_example(ex)
-"
-# or use main.py after editing the import at the top
+python Examples_native/spiderfloat.py
+
+# or
+cd Examples
+python spiderfloat.py
+```
+
+To run the full simulation:
+
+```bash
+# From root folder
 python main.py
 ```
 
