@@ -199,15 +199,22 @@ def torsion_damper(joint, R, ax, color='m', linewidth=1.2):
                 label='Torsion Damper' if i == 0 else None)
 
 def resolve_point(code: str, CG, BD, GR):
-    """tiny helper to turn 'CG2', 'BD12', 'GR3' into (x,y)."""
-    pt, body, *rest = code[:2], int(code[2]), *code[3:]
+    """tiny helper to turn 'BD12_3'/'GR0_3'/'CG1_1' (required delimited format)
+    into (x,y)."""
+    pt = code[:2]
+    rest = code[2:]
+    if "_" not in rest:
+        raise ValueError(
+            f"'{code}' uses the legacy point-string format. "
+            f"Use the delimited form instead, e.g. 'BD12_3' (body=12, point=3)."
+        )
+    body_str, idx_str = rest.split("_")
+    body, idx = int(body_str), int(idx_str)
     if pt == "CG":
         return tuple(CG[body-1])
     if pt == "BD":
-        idx = int(rest[0]) 
         arr = BD[body].reshape(-1,2)
         return tuple(arr[idx])
     if pt == "GR":
-        idx = int(rest[0]) 
         return tuple(GR[idx])
     return (np.nan, np.nan)

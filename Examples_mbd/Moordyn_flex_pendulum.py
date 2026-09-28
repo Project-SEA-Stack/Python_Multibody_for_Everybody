@@ -62,7 +62,7 @@ Force["PointsBD"] = []
 Force["CG"] = []
 
 # Tension springs: stored as a list of tuples: (connection, [l0, stiffness]).
-# Here "BD41" means (for example) the 1st point on body 4.
+# Here "BD4_1" means (for example) the 1st point on body 4.
 Force["TensionSpring"] = []
 
 # Tension dampers: here we have two pairs.
@@ -78,7 +78,7 @@ Force["TorsionDamper"] = []
 
 # Mooring lines
 Force["Moorings"] = [
-    (("BD10","GR00"), ['main',100.5,1,'p']), 
+    (("BD1_0","GR0_0"), ['main',100.5,1,'p']), 
     ]
 
 MoorLineTypes = {

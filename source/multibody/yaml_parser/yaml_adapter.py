@@ -294,12 +294,12 @@ class YAML2Example:
             gr_list = self.Initial_Points.get("GR", [])
             for i, (gx, gz) in enumerate(gr_list):
                 if abs(gx - coord_abs[0]) <= tol and abs(gz - coord_abs[1]) <= tol:
-                    return f"GR0{i}"
+                    return f"GR0_{i}"
 
             idx = len(gr_list)
             gr_list.append(coord_abs)
             self.Initial_Points["GR"] = gr_list
-            return f"GR0{idx}"
+            return f"GR0_{idx}"
 
         # ---------- Body-defined (BD) branch: store RELATIVE ----------
         body_idx = self.name2idx[body_name]
@@ -319,11 +319,11 @@ class YAML2Example:
         bd_list = self.Initial_Points["BD"][body_idx]
         for i, (bx, bz) in enumerate(bd_list):
             if abs(bx - coord_rel[0]) <= tol and abs(bz - coord_rel[1]) <= tol:
-                return f"BD{body_idx}{i}"
+                return f"BD{body_idx}_{i}"
 
         idx = len(bd_list)
         bd_list.append(coord_rel)
-        return f"BD{body_idx}{idx}"
+        return f"BD{body_idx}_{idx}"
 
     
     def parse_ic(self):
@@ -454,13 +454,7 @@ class YAML2Example:
 
                 # Register BD point (returns 0-based localID)
                 pointName = self._register_point(body_name=e["body"], xyz=pos_vec, is_local=e.get("local_point", True))
-                # Check the total number of bodies is < 10 for this to work
-                if len(self.idx2name) < 10:
-                    localID = int(pointName[3:])  #  What if the number of bodies > 10? 
-                elif len(self.idx2name) < 100:
-                    localID = int(pointName[4:])
-                else:
-                    raise ValueError("Number of bodies exceeds 99 or negative, cannot parse localID from pointName.")
+                localID = int(pointName.split("_")[1])
 
                 # Store force at BD point
                 self.Force["PointsBD"].append([body_idx, localID, Fx,Fz,0])
@@ -511,25 +505,13 @@ class YAML2Example:
                 # register BD points if body is not fixed/world
                 if m["body1"] not in self.fixed_names:
                     pointName = self._register_point(body_name=m["body1"], xyz=loc_w, is_local=False)
-
-                    if len(self.idx2name) < 10:
-                        localID = int(pointName[3:])  #  What if the number of bodies > 10? 
-                    elif len(self.idx2name) < 100:
-                        localID = int(pointName[4:])
-                    else:
-                        raise ValueError("Number of bodies exceeds 99 or negative, cannot parse localID from pointName.")
+                    localID = int(pointName.split("_")[1])
 
                     self.Force["PointsBD"].append([b1, localID,  Fx,  Fz, sym.Integer(0)])
 
                 if m["body2"] not in self.fixed_names:
                     pointName = self._register_point(body_name=m["body2"], xyz=loc_w, is_local=False)
-
-                    if len(self.idx2name) < 10:
-                        localID = int(pointName[3:])  #  What if the number of bodies > 10? 
-                    elif len(self.idx2name) < 100:
-                        localID = int(pointName[4:])
-                    else:
-                        raise ValueError("Number of bodies exceeds 99 or negative, cannot parse localID from pointName.")
+                    localID = int(pointName.split("_")[1])
 
                     self.Force["PointsBD"].append([b2, localID, -Fx, -Fz, sym.Integer(0)])
 

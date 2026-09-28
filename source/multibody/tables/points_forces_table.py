@@ -78,20 +78,24 @@ def points_table(Initial_Points):
     
 def parse_point_str(pt_str):
     """
-    Simple parser for a string like 'BD11' or 'GR11'.
+    Parser for a point string in the required delimited format, e.g. 'BD12_3'.
     Returns (pointType, bodyChar, pointIDStr).
-    
+
     Example:
-      'BD11' -> ('BD', '1', '1')
-      'GR22' -> ('GR', '2', '2')
-      
+      'BD12_3' -> ('BD', '12', '3')
+
     Adjust if your naming scheme differs!
     """
     if len(pt_str) < 4:
         raise ValueError(f"Point string '{pt_str}' is unexpectedly short.")
     pointType = pt_str[:2]        # e.g. 'BD', 'GR', 'CG', etc.
-    bodyChar  = pt_str[2]         # third character is body index
-    pIDStr    = pt_str[3:]        # everything after that is point ID
+    rest = pt_str[2:]
+    if "_" not in rest:
+        raise ValueError(
+            f"'{pt_str}' uses the legacy point-string format. "
+            f"Use the delimited form instead, e.g. 'BD12_3' (body=12, point=3)."
+        )
+    bodyChar, pIDStr = rest.split("_")
     return pointType, bodyChar, pIDStr
 
 def force_table(Force):

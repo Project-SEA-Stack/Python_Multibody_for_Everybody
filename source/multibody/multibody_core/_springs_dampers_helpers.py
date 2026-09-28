@@ -15,31 +15,25 @@ def cross2D(MomentArm, Force):
 def parse_point_str(point_str):
     """
     Parses a point string used in tension spring definitions.
-    
-    Expected formats:
-      - If length is 4 (e.g., "BD41"): 
-            point type = first two characters (e.g., "BD"),
-            body = third character as integer,
-            cell = fourth character as integer.
-            
-      - If length is 6 or 8, similar logic applies (the extra characters are ignored).
-    
+
+    Required format: "<TYPE>_<body>_<cell>", e.g. "BD12_3" -- point type is the
+    first two characters (e.g. "BD"), body and cell are "_"-separated integers
+    of any width.
+
     Returns:
       (point_type, body, cell, None, None, None)
       (Only the first three values are used for tension spring calculations.)
     """
-    if len(point_str) == 4:
-        point_type  = point_str[0:2].upper()
-        body        = int(point_str[2])
-        cell        = int(point_str[3])
-        return point_type, body, cell, None, None, None
-    elif len(point_str) in [6, 8]:
-        point_type  = point_str[0:2].upper()
-        body        = int(point_str[2])
-        cell        = int(point_str[3])
-        return point_type, body, cell, None, None, None
-    else:
-        raise ValueError("Unexpected format for tension spring point string: " + point_str)
+    point_type = point_str[0:2].upper()
+    rest = point_str[2:]
+    if "_" not in rest:
+        raise ValueError(
+            f"'{point_str}' uses the legacy point-string format. "
+            f"Use the delimited form instead, e.g. 'BD12_3' (body=12, cell=3)."
+        )
+    body_str, cell_str = rest.split("_")
+    body, cell = int(body_str), int(cell_str)
+    return point_type, body, cell, None, None, None
 
 class SpringsAndDampersHelpers:
     """

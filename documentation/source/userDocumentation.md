@@ -109,7 +109,7 @@ Force["PointsBD"] = []
 Force["CG"] = []
 
 # Tension springs: stored as a list of tuples: (connection, [l0, stiffness]).
-# Here "BD41" means (for example) the 1st point on body 4.
+# Here "BD4_1" means (for example) the 1st point on body 4.
 Force["TensionSpring"] = []
 
 # Tension dampers: here we have two pairs.
@@ -413,14 +413,14 @@ Force["CG"] = [
 
 ```python
 # Each entry is ((pointA, pointB), [l0, stiffness])
-# pointA/pointB are strings like "BD10" = Body 1 Point 0, "GR01" = Ground Point 1
+# pointA/pointB are strings like "BD1_0" = Body 1 Point 0, "GR0_1" = Ground Point 1
 Force["TensionSpring"] = [
-    (("BD10","BD20"), [7.0139, 1e0]),
-    (("BD11","BD30"), [7.0139, 1e0]),
-    (("BD12","BD21"), [11.8004, 1e-1]),
-    (("BD13","BD31"), [11.8004, 1e-1]),
-    (("BD20","GR00"), [3.0414, 1e-1]),
-    (("GR01","BD30"), [3.0414, 1e-1])
+    (("BD1_0","BD2_0"), [7.0139, 1e0]),
+    (("BD1_1","BD3_0"), [7.0139, 1e0]),
+    (("BD1_2","BD2_1"), [11.8004, 1e-1]),
+    (("BD1_3","BD3_1"), [11.8004, 1e-1]),
+    (("BD2_0","GR0_0"), [3.0414, 1e-1]),
+    (("GR0_1","BD3_0"), [3.0414, 1e-1])
 ]
 ```
 
@@ -429,8 +429,8 @@ Force["TensionSpring"] = [
 ```python
 # Each entry: ((pointA, pointB), damping_coefficient)
 Force["TensionDamper"] = [
-    (("GR00","CG22"), 3),
-    (("GR01","CG33"), 3)
+    (("GR0_0","CG2_2"), 3),
+    (("GR0_1","CG3_3"), 3)
 ]
 ```
 
@@ -759,7 +759,7 @@ The variable `Initial_Points` is a dictionary with two entried:
 The entry `GR` is a list containing the relative coordinates of each point in an inertial frame of reference, defined by `Reference_frame_Origin`. On the other hand, the entry `BD` is another dictionary, which entries refer to the additional points each body has. Each dictionary entry, contains a list of points. In this example, only body 1 has associated points and it has two points. The coordinates entered for the `Initial_Points['BD']` are **relative to the CG**. Thus the first point in body 1 is located 0.75 units to the right of the body 1 CG.
 
 After defining these popints, we can access them at the code. For instance point `[0.75, 0]`, the first point defined in body 1 is accessed
-as `'BD10'` and point `[-0.75,0]` defined on body 1 also is accessed as `'BD11'`
+as `'BD1_0'` and point `[-0.75,0]` defined on body 1 also is accessed as `'BD1_1'`
 
 #### **5 - Forces definition**
 
@@ -812,11 +812,11 @@ Force["CG"] = [[1,0,0.1*sym.exp(-t),0]]
     1. Tuple of strings that refer to the two points connected by the spring
     2. List of parameters containing [$l_0$: undeformed length, $k$: stiffness constant *if linear spring (will be clarified later)*]
 
-In this example we are connecting the first ground point, `'GR00'`, with the first point in body 1, `'BD10'`. These points were already defined in the dictionary `Inital_Points`. Then we define the unstreched length, $l_0$ as 5, and the stiffness, $k$, will be symbolic.
+In this example we are connecting the first ground point, `'GR0_0'`, with the first point in body 1, `'BD1_0'`. These points were already defined in the dictionary `Inital_Points`. Then we define the unstreched length, $l_0$ as 5, and the stiffness, $k$, will be symbolic.
 
 ```python
-Force["TensionSpring"] = [(('GR00','BD10'),[5,k]),
-                          (('GR01','BD11'),[5,k])
+Force["TensionSpring"] = [(('GR0_0','BD1_0'),[5,k]),
+                          (('GR0_1','BD1_1'),[5,k])
                             ]
 ```
 
@@ -827,8 +827,8 @@ Force["TensionSpring"] = [(('GR00','BD10'),[5,k]),
 Tension dampers are defined in a very similar manner to tension springs. The points are defined in the same manner, however, when defining the parameters, instead of passing a list we pass a float corresponding to the damping coefficient. 
 
 ```python
-Force["TensionDamper"] = [(('GR00','BD10'),1),
-                          (('GR01','BD11'),1)]
+Force["TensionDamper"] = [(('GR0_0','BD1_0'),1),
+                          (('GR0_1','BD1_1'),1)]
 ```
 
 - TorsionSpring: list of tuples where each tuple contains

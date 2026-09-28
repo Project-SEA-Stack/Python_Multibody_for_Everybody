@@ -70,14 +70,14 @@ Force["PointsBD"] = [[1,0,0,-1,2], [4,0,2,-2,5],[1,1,sym.exp(0.),0,0]]
 Force["CG"] = [[1,1,2,3], [4,1,-1,-2]]
 
 # Tension springs: stored as a list of tuples: (connection, [l0, stiffness]).
-# Here "BD41" means (for example) the 1st point on body 4.
-Force["TensionSpring"] = [(('BD40','BD11'),[2,300])]
+# Here "BD4_1" means (for example) the 1st point on body 4.
+Force["TensionSpring"] = [(('BD4_0','BD1_1'),[2,300])]
 
 # Tension dampers: here we have two pairs.
 # The first pair uses a constant damping coefficient.
 # The second uses a lambda function to represent a nonlinear damping coefficient.
-Force["TensionDamper"] = [(('CG22','BD11'),3000),
-                          ( ('BD21','GR01'),lambda ld: 100+20*sym.sin(ld)**2)
+Force["TensionDamper"] = [(('CG2_2','BD1_1'),3000),
+                          ( ('BD2_1','GR0_1'),lambda ld: 100+20*sym.sin(ld)**2)
                          ]
 
 # Torsion springs: here the first element is a list of parameters and the second element is a lambda.

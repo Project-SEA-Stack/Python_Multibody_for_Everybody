@@ -118,8 +118,8 @@ class TemplateInterface:
         for pointInfo, forceInfo in extForceEntry:                
                 
             if pointInfo.startswith("CG"): # Coupled
-                # Unpack values for BD points
-                b  = int(pointInfo[2])
+                # Unpack values for BD points (no separate cell/point index for CG)
+                b  = int(pointInfo[2:].split("_")[0]) if "_" in pointInfo[2:] else int(pointInfo[2:])
                 
                 # Map between global id and local ID for External Forces Manager
                 # Used to translate from MoorDyn forces to MBD forces

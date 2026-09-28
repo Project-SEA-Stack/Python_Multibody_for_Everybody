@@ -241,7 +241,10 @@ class MoorDynInterface:
             
             # Create a list with all the points that are connected to mooring line
             if code.startswith("GR"): # Ground
-                idx     = int(code[3])
+                rest    = code[2:]
+                if "_" not in rest:
+                    raise ValueError(f"'{code}' uses the legacy point-string format. Use the delimited form instead, e.g. 'GR0_3'.")
+                idx     = int(rest.split("_")[1])
                 x, z    = GR[idx]
                 
                 # The list
@@ -254,7 +257,10 @@ class MoorDynInterface:
             
             if code.startswith("BD"): # Coupled
                 # Unpack values for BD points
-                b, loc  = int(code[2]), int(code[3:])
+                rest = code[2:]
+                if "_" not in rest:
+                    raise ValueError(f"'{code}' uses the legacy point-string format. Use the delimited form instead, e.g. 'BD12_3'.")
+                b, loc = (int(v) for v in rest.split("_"))
                 
                 # Relative position of BD w.r.t CG in global frame of reference
                 x, z    = BD[b][loc]

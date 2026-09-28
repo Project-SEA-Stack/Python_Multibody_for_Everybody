@@ -3,17 +3,42 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "multibody4everybody"
-version = "0.1.0"
-description = "Symbolic multibody dynamics framework"
-authors = [{name = "Your Name"}]
+name = "pyM4E"
+version = "2.0.0"
+description = "Symbolic multibody dynamics framework for planar systems"
+authors = [
+    {name = "Alvaro Diaz Flores Caminero"},
+    {name = "Sahand Sabet"},
+]
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy",
     "sympy",
     "pandas",
     "matplotlib",
-    "networkx"
+    "networkx",
+    "PyYAML",
+    "xarray",
+    "capytaine",
+]
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=7",
+    "sphinx-autodoc-typehints",
+    "myst-parser",
+    "furo",
+]
+moordyn = [
+    "moordyn>=2.3",
+    "MoorPy>=1.2",
+]
+moorpy = [
+    "MoorPy>=1.2",
+]
+wecopttool = [
+    "wecopttool>=3.1,<4",
 ]
 
 [tool.pytest.ini_options]

@@ -1,4 +1,4 @@
-name: multibody_env
+name: pyM4E_env
 channels:
   - conda-forge
   - defaults
@@ -9,6 +9,16 @@ dependencies:
   - sympy
   - pandas
   - matplotlib
+  - networkx
+  - pyyaml
+  - xarray
+  - capytaine
   - pip
   - pip:
-    - -e .
+      - -e .
+
+# Optional feature groups can be installed after activating this environment:
+#   python -m pip install -e ".[docs]"
+#   python -m pip install -e ".[moordyn]"
+#   python -m pip install -e ".[moorpy]"
+#   python -m pip install -e ".[wecopttool]"

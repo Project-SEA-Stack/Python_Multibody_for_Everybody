@@ -65,8 +65,8 @@ Force["PointsBD"] = []
 Force["CG"] = [[1,0,0,gamma]]
 
 # Tension springs: stored as a list of tuples: (connection, [l0, stiffness]).
-Force["TensionSpring"] = [(('BD10','CG22'),[1,k]),
-                          (('CG22','BD11'),[1,k])
+Force["TensionSpring"] = [(('BD1_0','CG2_2'),[1,k]),
+                          (('CG2_2','BD1_1'),[1,k])
                             ]
 
 # Tension dampers: here we have two pairs.

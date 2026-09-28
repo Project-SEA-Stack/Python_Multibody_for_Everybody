@@ -19,7 +19,7 @@ def check_point_string(pointStr, nBodies, Initial_Points):
     Parameters
     ----------
     pointStr : sequence of str
-        Iterable of point codes (e.g. ['BD41', 'GR02', ...]).
+        Iterable of point codes (e.g. ['BD4_1', 'GR0_2', ...]).
     nBodies : int
         Total number of moving bodies (ground = 0).
     Initial_Points : mapping or object
@@ -48,9 +48,13 @@ def check_point_string(pointStr, nBodies, Initial_Points):
             raise ValueError(f"Unknown prefix '{prefix}' in string '{pointStr}' at cell iCell={i}. Use BD, GR or CG")
         
         
+        # Delimited format required, e.g. "BD12_3" -> body=12, point=3 (any width).
+        rest = pt[2:]
+        if "_" not in rest:
+            raise ValueError(f"'{pointStr}' at iCell={i} uses the legacy point-string format. Use the delimited form instead, e.g. 'BD4_1' (body=4, point=1).")
         try:
-            bodyIdx = int(pt[2])             # the remaining characters
-            ptIdx   = int(pt[3])
+            body_str, ptIdx_str = rest.split("_")
+            bodyIdx, ptIdx = int(body_str), int(ptIdx_str)
         except ValueError:
             raise ValueError(f"Failed to parse '{pointStr}' at iCell={i} into numeric body/pt indices.")
         

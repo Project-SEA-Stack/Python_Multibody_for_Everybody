@@ -78,7 +78,7 @@ Force["PointsBD"] = []
 Force["CG"] = []
 
 # Tension springs: stored as a list of tuples: (connection, [l0, stiffness]).
-# Here "BD41" means (for example) the 1st point on body 4.
+# Here "BD4_1" means (for example) the 1st point on body 4.
 Force["TensionSpring"] = [] 
 
 # Tension dampers: here we have two pairs.

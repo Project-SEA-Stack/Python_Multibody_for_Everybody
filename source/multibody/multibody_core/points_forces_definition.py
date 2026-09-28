@@ -209,7 +209,7 @@ def points_force_finder(Joints, NBodies, Pos, Q, QD, Initial_Points, Force, Join
             Force_All["CG"][b_-1] += sym.Matrix([Fx_, Fz_, My_])
     
     # 9) TensionSpring
-    #    Each item: (("BD12","BD23"), [l0, k]) or (("CG11","BD32"), [...]) etc.
+    #    Each item: (("BD1_2","BD2_3"), [l0, k]) or (("CG1_1","BD3_2"), [...]) etc.
     if "TensionSpring" in Force:
         '''
         Force_TensionSpring : list

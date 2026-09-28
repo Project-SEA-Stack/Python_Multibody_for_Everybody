@@ -52,17 +52,13 @@ pip install .      # regular install for users
 
 **Run a multibody dynamics example:**
 ```bash
-python Examples_native/spiderfloat.py
-
-# or
-cd Examples
-python spiderfloat.py
-```
-
-To run the full simulation:
-
-```bash
-# From root folder
+# From the repository root
+python -c "
+from Examples_mbd import spiderfloat as ex
+from multibody import MbdSystem, integrate_dynamics
+MBD = MbdSystem.from_example(ex)
+"
+# or use main.py after editing the import at the top
 python main.py
 ```
 

@@ -65,15 +65,15 @@ Force["PointsBD"] = []
 Force["CG"] = [[1,0,0.1*sym.exp(-t),0]]
 
 # Tension springs: stored as a list of tuples: (connection, [l0, stiffness]).
-Force["TensionSpring"] = [(('GR00','BD10'),[5,k]),
-                          (('GR01','BD11'),[5,k])
+Force["TensionSpring"] = [(('GR0_0','BD1_0'),[5,k]),
+                          (('GR0_1','BD1_1'),[5,k])
                             ]
 
 # Tension dampers: here we have two pairs.
 # The first pair uses a constant damping coefficient.
 # The second uses a lambda function to represent a nonlinear damping coefficient.
-Force["TensionDamper"] = [(('GR00','BD10'),1),
-                          (('GR01','BD11'),1)]
+Force["TensionDamper"] = [(('GR0_0','BD1_0'),1),
+                          (('GR0_1','BD1_1'),1)]
 
 # Torsion springs: here the first element is a list of parameters and the second element is a lambda.
 Force["TorsionSpring"] = [((1,2),[0,10]),
