@@ -38,18 +38,13 @@ moorpy_inputs.py.  No coordinates are duplicated there.
 import sys
 import os
 
-# Add the workspace root so 'multibody' is importable when this module is
-# executed directly.
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
-_SRC  = os.path.join(_ROOT, "source")
-for _p in (_ROOT, _SRC):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+# Add the source and examples directory to the path to run examples
+source_dir      = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, source_dir)
 
 import numpy as np
-
-from multibody import normalize_prismatic, symvars_definition
+from multibody import normalize_prismatic, symvars_definition, JointSystem
+import multibody as mb
 
 # ---------------------------------------------------------------------------
 # Symbolic variable sets (empty for this minimal example)
@@ -96,7 +91,7 @@ Initial_Points["GR"] = [
 # A 2 m horizontal offset produces nonzero surge–pitch coupling in K.
 Initial_Points["BD"] = {
     1: [
-        [2.0, -5.0],   # index 0: fairlead (2 m starboard, 5 m below CG)
+        [-2.0, -5.0],   # index 0: fairlead (2 m starboard, 5 m below CG)
     ],
 }
 
@@ -115,24 +110,20 @@ Force["TorsionDamper"]= []
 # ---------------------------------------------------------------------------
 # Physical parameters
 # ---------------------------------------------------------------------------
-
 g    = 9.81                           # gravitational acceleration [m/s²]
 gVec = np.ones((len(types), 1))       # gravity active on body 1
-
-m0   = np.array([2500.0])             # buoy mass [kg]
-J0   = np.array([2500.0])             # buoy pitch inertia [kg·m²]
 
 # ---------------------------------------------------------------------------
 # Initial conditions
 # ---------------------------------------------------------------------------
 # ic = [x, z, theta, xd, zd, thetad]  (position then velocity)
 # Buoy starts at rest at the origin — all zeros.
+ic = np.zeros(6)
 
-from multibody import JointSystem     # noqa: E402 (import after path setup)
+###########################################################################
+######################### END OF USER DEFINITION ##########################
+###########################################################################
 
-_joint_system = JointSystem.from_data(
-    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction
-)
-_Q, _QD, _, NDOF, _ = _joint_system.coordinate_finder()
-
-ic = np.zeros(2 * sum(NDOF))   # [x, z, theta, xd, zd, thetad] = [0, …, 0]
+#%% Checks section: ensures everything is defined correctly
+mb.checks.bodies(joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction)
+mb.checks.points_forces(joints, types, Initial_Points, Force)

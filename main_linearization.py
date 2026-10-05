@@ -20,28 +20,12 @@ from multibody.linearization.hydro_linear_mckf import HydroLinearMCKF
 
 ############ Example to import ############
 # from Examples import spiderfloat as ex
-from Examples_linearization.single_flap import M4E_inputs as ex
-from Examples_linearization.single_flap.hydro_inputs import waves, body_inputs, freq, amplitude, m0, J0
+from Examples_linearization.sandia_flap import M4E_inputs as ex
+from Examples_linearization.sandia_flap.hydro_inputs import waves, body_inputs, freq, amplitude, m0, J0
 # from Pytests import Example1 as ex
 
 # Target folder 
-folder = 'Examples_linearization/single_flap/hydroData/'
-
-# [Optional] Define a custom mooring class 
-class CustomMooring():
-        name = "Mooring"
-
-        def __init__(self):
-                pass
-
-        def frequency_domain_MCKF(self, omega):
-                M = np.zeros((9,9))
-                K = np.diag([3*1e5, 6e4, 5e4, 0, 0, 0, 0, 0, 0])
-                C = np.diag([3*1e4, 5e4, 5e5, 0, 0, 0, 0, 0, 0])
-                # Fdc = np.array([1e5, 0, 0, 0, 0, 0, 0, 0, 0]) # Pre-tension in surge
-                F = {'dc': np.zeros(9), 'phasor': np.zeros(9)} # Pre-tension
-
-                return M, C, K, F
+folder = 'Examples_linearization/sandia_flap/hydroData/'
 
 ############### Beginning of the multibody simulation ###############
 # 1- Initialize the Multibody system
@@ -51,7 +35,7 @@ MBDsys = MbdSystem.from_example(ex)
 # Define the equilibrium position
 q0 = (MBDsys.ic - ex.ic)[:len(MBDsys.Q)] # This may need revision but avoids user thinking too much
 # Define initial conditions w.r.t equilibrium
-mainNumVars = ex.ic.copy()
+mainNumVars = np.hstack((ex.ic, ex.ForcesPointsNum, ex.BodyDataNum)) # delta_q0
 
 print('Finished initialization')
 
@@ -73,10 +57,8 @@ hydroAdapter = HydroLinearMCKF(
         file_name="bem.nc", 
         rho=1025,
         )
-mooringAdapter = CustomMooring()
 
 LinManager.register(hydroAdapter)
-# LinManager.register(mooringAdapter)
 
 ########### Frequency-domain analysis ############
 # --- Frequency-domain matrices for all omegas ---

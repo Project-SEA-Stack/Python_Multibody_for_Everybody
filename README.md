@@ -29,8 +29,8 @@ YAML-based model input, and flexible visualization.
 
 ```bash
 # Clone the repo and enter the directory
-git clone https://github.com/Project-SEA-Stack/Python_Multibody_for_Everybody
-cd Python_Multibody_for_Everybody
+git clone https://github.com/Project-SEA-Stack/Python_multibody_dyamics.git
+cd Python_multibody_dyamics
 ```
 
 **Option 1 — conda (recommended):**

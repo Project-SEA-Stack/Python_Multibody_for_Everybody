@@ -203,7 +203,8 @@ class JointSystem:
         }
 
         df = DataFrame(data)
-        print(df.to_string(index=False))
+        from ..tables.points_forces_table import print_grid_table
+        print_grid_table(df)
 
 
     def coordinate_finder(self):

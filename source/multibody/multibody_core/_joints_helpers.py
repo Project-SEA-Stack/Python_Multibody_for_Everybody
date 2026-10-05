@@ -268,10 +268,18 @@ def pris_joint(Q, QD, Body_col, JointtoChildCG, ParentCGtoJoint, Child_Joint,
     """
     prismatic_dir               = Matrix(prismatic_direction[joint_ind])
     real_parent_omega_column    = prism_joint_to_omega_col_ind[joint_ind]
-    real_parent_theta           = Q[real_parent_omega_column]
-    real_parent_thetaD          = QD[real_parent_omega_column]
+    parent_body_flag            = prism_parent_body[joint_ind]
     child_body_coordinateD      = QD[ Body_col[child_ind-1][-1] ]
-    
+
+    # No rotational ancestor between this joint and ground (pure 'P' chain) -> theta=0.
+    # Mirrors the same check already done in pris_joint_children().
+    if parent_body_flag == 0:
+        real_parent_theta   = 0
+        real_parent_thetaD  = 0
+    else:
+        real_parent_theta   = Q[real_parent_omega_column]
+        real_parent_thetaD  = QD[real_parent_omega_column]
+
     # Compute JointLoc as parent's (x,z) plus rotated sum of ParentCGtoJoint and (Child_Joint * prismatic_dir)
     parent_pos      = Matrix([Pos[i, 0] for i in Parent_Body_ind[:-1]])
     CG2JointChild   = Matrix(ParentCGtoJoint[joint_ind]) + Child_Joint * prismatic_dir
@@ -457,10 +465,16 @@ def prismatic_omega_finder(Joints, Type, non_zero_elem, Body_col, prism_joint_to
                         real_parent                 = Joints[parent_joint_rows[0], 0]
                         real_parent_joint_rows      = np.where(Joints[:,1] == real_parent)[0]
 
-                    prism_joint_to_omega_col_ind[i]         = Body_col[real_parent-1][-1]
                     prism_parent_body[i]                    = real_parent
                     current_body                            = Joints[i,1]
                     pris_body_to_parent_map[current_body-1] = prism_parent_body[i]
+                    # real_parent==0 means the chain traces back to ground with no
+                    # rotational ancestor -- leave the omega column unset (NaN); any
+                    # consumer must check prism_parent_body==0 first (theta=0), same
+                    # as pris_joint_children() already does, instead of indexing here
+                    # (Body_col[-1] would silently wrap to the wrong body).
+                    if real_parent != 0:
+                        prism_joint_to_omega_col_ind[i] = Body_col[real_parent-1][-1]
 
     pris_ind = [i for i in range(len(prism_joint_to_omega_col_ind)) if not math.isnan(prism_joint_to_omega_col_ind[i])]
 

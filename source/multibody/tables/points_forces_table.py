@@ -13,6 +13,64 @@ import pandas as pd
 #         return float(v.evalf(3))
 #     return v
 
+
+def _fmt_cell_value(v):
+    """Compact cell formatting: same fixed-vs-scientific choice as Python's
+    own str(float), just capped at 2 decimals (e.g. 8.333333333333336e-05
+    -> 8.33e-05, 0.0001 -> 0.00) so wide tables fit in one row. None and NaN
+    are both rendered as "nan" (same placeholder, regardless of which one a
+    particular column happens to end up holding)."""
+    if v is None:
+        return "nan"
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, float):
+        if v != v:  # NaN
+            return "nan"
+        return f"{v:.2e}" if "e" in repr(v) else f"{v:.2f}"
+    if isinstance(v, (list, tuple)):
+        return "[" + ", ".join(_fmt_cell_value(x) for x in v) + "]"
+    return str(v)
+
+
+def render_grid_table(df, index=False):
+    """
+    Render a DataFrame as a bordered ASCII grid (+---+---+ row/column
+    separator lines) instead of pandas' plain whitespace-aligned to_string(),
+    which is hard to read once columns get wide/numerous (wraps unreadably
+    in a narrow terminal).
+    """
+    headers = ([df.index.name or ""] if index else []) + [str(c) for c in df.columns]
+    rows = []
+    for idx, row in df.iterrows():
+        cells = ([str(idx)] if index else []) + [_fmt_cell_value(v) for v in row.tolist()]
+        rows.append(cells)
+
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def sep_line(char="-"):
+        return "+" + "+".join(char * (w + 2) for w in widths) + "+"
+
+    def fmt_row(cells):
+        return "|" + "|".join(f" {c:<{w}} " for c, w in zip(cells, widths)) + "|"
+
+    lines = [sep_line(), fmt_row(headers), sep_line("=")]
+    if rows:
+        for row in rows:
+            lines.append(fmt_row(row))
+    else:
+        lines.append(fmt_row(["(none)"] + [""] * (len(widths) - 1)))
+    lines.append(sep_line())
+    return "\n".join(lines)
+
+
+def print_grid_table(df, index=False):
+    print(render_grid_table(df, index=index))
+
+
 def points_table(Initial_Points):
     """
     Build a pandas DataFrame listing all defined points in the system.
@@ -73,7 +131,7 @@ def points_table(Initial_Points):
         ])
     
     # Display the DataFrame.
-    print(df_points.to_string(index=False))
+    print_grid_table(df_points)
     
     
 def parse_point_str(pt_str):
@@ -333,6 +391,91 @@ def force_table(Force):
     
     # df_forces = df_forces.applymap(to_float)
     pd.set_option('display.precision', 3)
-    print(df_forces.to_string(index=False))
+    print_grid_table(df_forces)
+
+
+def _fmt_vec(v):
+    """Flatten a sympy Matrix (post-normalize_prismatic) back into a plain
+    list so it renders as e.g. [nan, nan] instead of Matrix([[nan], [nan]])."""
+    if hasattr(v, "tolist"):
+        v = v.tolist()
+        if len(v) > 0 and isinstance(v[0], list):
+            v = [row[0] for row in v]
+    return v
+
+
+def bodies_table(joints, types, parent_cg_to_joint, joint_to_child_cg,
+                  prismatic_direction, m0=None, J0=None, flex_bd=None, title=None):
+    """
+    Build and print a table listing every body/joint definition -- the SAME
+    parallel lists (joints, types, parent_cg_to_joint, joint_to_child_cg,
+    prismatic_direction) any example script already defines, one row per
+    real body. m0/J0/flex_bd are optional (flex_bd only exists for a
+    Table-1-style pre-expansion declaration, never for an ordinary rigid
+    example or an already-expanded generated file).
+
+    Returns
+    -------
+    df : pandas.DataFrame
+    """
+    rows = []
+    for i, (j, t, p2j, j2c, pd_) in enumerate(
+            zip(joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction), start=1):
+        row = {
+            "Body": i,
+            "Parent": j[0],
+            "Type": t,
+            "p2j": _fmt_vec(p2j),
+            "j2c": _fmt_vec(j2c),
+            "pris_dir": _fmt_vec(pd_),
+        }
+        if m0 is not None:
+            row["m0"] = m0[i - 1]
+        if J0 is not None:
+            row["J0"] = J0[i - 1]
+        if flex_bd is not None:
+            row["flex_bd"] = flex_bd[i - 1]
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    if title:
+        print(title)
+    print_grid_table(df)
+    return df
+
+
+def flex_properties_table(flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+                           flex_deformation_mode, flex_clamp_on, flex_m=None, flex_J=None,
+                           title=None):
+    """
+    Build and print Table 2 -- per-flexible-member properties. Row i's
+    properties belong to real body flex_bds[i] (Table 1's flex_bd column).
+
+    Returns
+    -------
+    df : pandas.DataFrame
+    """
+    rows = []
+    for i, body in enumerate(flex_bds):
+        row = {
+            "flex_bd": body,
+            "n_seg": flex_n_seg[i],
+            "L": flex_L[i],
+            "E": flex_E[i],
+            "A": flex_A[i],
+            "I": flex_I[i],
+            "rho": flex_rho[i],
+            "deform_mode": flex_deformation_mode[i],
+            "clamp_on": flex_clamp_on[i],
+        }
+        if flex_m is not None:
+            row["m (override)"] = flex_m[i]
+        if flex_J is not None:
+            row["J (override)"] = flex_J[i]
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    if title:
+        print(title)
+    print_grid_table(df)
+    return df
 
 

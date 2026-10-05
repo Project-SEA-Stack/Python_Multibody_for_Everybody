@@ -3,7 +3,7 @@ This chapter aims to help understand the M4E 2D code usage.
 This is not the documentation for developers, but rather teaches how to define
 new examples to use the tool without knowledge of the math or what happens in the
 backend. What you can expect from this chapter is to learn how to define the 
-multi-body system either using numeric values or symbolic values and how to loop
+multibody system either using numeric values or symbolic values and how to loop
 over multiple symbolic parameters. 
 
 You will learn how to define simple bodies connected by *Float*, *Revolut*, or
@@ -1415,5 +1415,659 @@ response amplitude by the wave amplitude gives the response-amplitude-operator (
 
 This same impedance matrix is the starting point for computing quantities such as absorbed PTO
 power at each frequency (not shown here); see [main_linearization.py's](https://github.com/Project-SEA-Stack/Python_multibody_dyamics/blob/main/main_linearization.py) frequency-domain block for a complete working reference.
+
+## Flexible bodies (FSM)
+
+### 1 - What is FSM, and why it helps with BEM hydrodynamics
+
+The Finite Segment Method (FSM) models a flexible member (a beam-like link that bends or
+stretches) as a chain of `n_seg` **rigid** segments connected by ordinary revolute ('R', bending)
+or prismatic ('P', axial) joints, each carrying a spring whose stiffness is derived from the
+member's own `E`, `I`/`A`, and length. As `n_seg` increases, this discrete chain converges to the
+real continuous beam (see the convergence plot in section 2) -- but at any finite `n_seg` it is,
+numerically, just an ordinary M4E multibody system comprised of multiple rigid bodies: every segment is a plain rigid body with its
+own CG, mass, and inertia, connected by joints and springs you already know how to define (discussed in previous sections).
+
+This is what makes FSM convenient for BEM-based hydrodynamics in particular. Computing genuinely
+**distributed** hydrodynamic loads over a continuously deforming body (projecting pressure onto
+mode shapes, or numerically integrating pressure over a deforming wetted surface) is slow and
+intricate with a BEM solver. FSM sidesteps this entirely: because the member is already a chain of
+rigid segments, BEM results (calculated for each segment) can generate the applied force and moments to the CG of the system. As a result, FSM can be used for quickly exploring  various designs in low-to-mid fidelity.  Additional external forces can be added using the external-force-adapter machinery that existing
+multibody example in this documentation already uses (see the "Linear hydrodynamics examples"
+section above). A flexible body
+built with FSM is, from the hydrodynamics adapter's point of view, just several more rigid bodies
+to apply forces to -- nothing new to build.
+
+### 2 - Derivation: bending and axial segments
+
+Each segment of length `dx = L/n_seg` is treated as a short, straight, rigid link. Deformation is
+NOT distributed inside a segment. This is the classical
+**finite segment method (FSM)**: a flexible member is replaced by a chain of rigid bodies joined by
+kinematic joints, following Nikravesh, Chung & Benedict (1983) and Connelly & Huston (1994a,b), and Nikravesh (2018). The two deformation modes:
+
+- **Bending** (`deformation_mode="bending"`): each joint is an 'R' joint, and its spring
+  represents the beam's curvature between the two neighboring segments.
+- **Axial** (`deformation_mode="axial"`): each joint is a 'P' joint, and its spring represents the
+  member's own stretch/compression. An axial member needs one extra "phantom" body at the free
+  tip (a massless anchor) -- unlike bending's free tip (which naturally carries zero moment), a
+  free axial tip still needs a joint to terminate the chain.
+
+
+**References** -- Nikravesh, P. *Planar Multibody Dynamics: Formulation, Programming with
+MATLAB(R), and Applications*; CRC Press: Boca Raton, FL, USA, 2018.
+[doi:10.1201/b22302](https://doi.org/10.1201/b22302) -- Connelly, J.; Huston, R.
+"The dynamics of flexible multibody systems: A finite segment approach -- I. Theoretical aspects."
+*Comput. Struct.* 1994, 50, 255-258.
+[doi:10.1016/0045-7949(94)90300-X](https://doi.org/10.1016/0045-7949%2894%2990300-X) -- Connelly,
+J.D.; Huston, R.L. "The dynamics of flexible multibody systems: A finite segment approach -- II.
+Example problems." *Comput. Struct.* 1994, 50, 259-262.
+[doi:10.1016/0045-7949(94)90301-8](https://doi.org/10.1016/0045-7949%2894%2990301-8) -- Nikravesh,
+P.; Chung, I.; Benedict, R. "Plastic hinge approach to vehicle crash simulation." *Comput. Struct.*
+1983, 16, 395-400.
+[doi:10.1016/0045-7949(83)90178-5](https://doi.org/10.1016/0045-7949%2883%2990178-5)
+
+#### 2.1 - Bending: from Euler-Bernoulli curvature to a half-cell spring
+
+Start from the ordinary Euler-Bernoulli relation between curvature and bending moment,
+`kappa = M/(EI)`. Treat one segment of length `ell` as carrying a constant moment `M` along its
+own length (reasonable once `ell=dx` is small). The relative end-to-end rotation it accumulates is
+then simply curvature times length:
+
+$$
+\theta = \kappa\, \ell = \frac{M\,\ell}{EI}
+\quad\Longrightarrow\quad
+k_{\text{segment}} = \frac{M}{\theta} = \frac{EI}{\ell}, \qquad
+C_{\text{segment}} = \frac{1}{k_{\text{segment}}} = \frac{\ell}{EI}.
+$$
+
+FSM does not place this whole-segment spring at one of the segment's ends -- it splits the
+segment's own compliance in half and assigns one **half-cell** (length `dx/2`) to each of the two
+joints bounding it, giving a half-cell compliance of `dx/(2EI)` per side. A joint's actual
+stiffness then depends on what is on its two sides (automatically assigned by the code):
+
+```{figure} /_static/figs/fsm_bending_half_cell_schematic.png
+:width: 85%
+:align: center
+```
+
+- **Clamped root** (`flex_clamp_on=True`): whatever is mounted on the OTHER side of this row's
+  first joint -- literal ground, an ordinary rigid body, or even another flexible member's own
+  (already-expanded) terminal body -- contributes zero EXTRA rotational compliance at that one
+  joint, so only segment 1's own half-cell remains in the chain: `C_root = dx/(2EI)`, i.e.
+  `k_root = 2EI/dx`. "Clamped" here describes this joint's local stiffness, not that the mounting
+  point is fixed in space -- a member clamped to a moving rigid hub still moves with that hub.
+- **Internal joint** (between two flexible segments): the SAME bending moment passes through both
+  half-cells one after the other, so their compliances add **in series**
+  (rotations add for a shared moment, exactly like two springs in series):
+  `C_joint = dx_1/(2E_1I_1) + dx_2/(2E_2I_2)`, i.e. `k = C_joint^{-1}` -- for uniform segments
+  (`dx_1=dx_2=dx`, `E_1I_1=E_2I_2=EI`) this collapses to the familiar `k = EI/dx`.
+- **Free tip**: Euler-Bernoulli's own free-end boundary condition is zero moment, `M=0`, at the
+  tip -- there is nothing left to split into a spring, so the chain simply ends with no joint
+  stiffness there (zero stiffness, zero moment).
+- **Pinned root** (mounted via a free hinge): also a zero-moment boundary condition at that joint,
+  same as a free tip -- no spring.
+
+#### 2.2 - Axial: the same half-cell idea, from Hooke's law
+
+The axial case follows an identical derivation, with Hooke's law `sigma = E epsilon` in place of
+the curvature relation. A uniform bar of length `ell` under axial force `F` stretches by
+`delta = F ell/(EA)`, so:
+
+$$
+\delta = \frac{F\,\ell}{EA}
+\quad\Longrightarrow\quad
+k_{\text{segment}} = \frac{F}{\delta} = \frac{EA}{\ell}, \qquad
+C_{\text{segment}} = \frac{\ell}{EA}.
+$$
+
+Splitting this into two half-cells of length `dx/2`, each with compliance `dx/(2EA)`, and combining
+them exactly as before (ground-side root = one half-cell only; internal joint = two half-cells in
+series) reproduces the bending case term-for-term with `EA` replacing `EI`:
+`k_root = 2EA/dx` and `k_joint = (dx_1/(2E_1A_1)+dx_2/(2E_2A_2))^{-1}` (`=EA/dx` for a uniform
+member).
+
+```{figure} /_static/figs/fsm_axial_half_cell_schematic.png
+:width: 85%
+:align: center
+```
+
+The one genuine difference from bending is at the **free tip**. Bending's free end has a natural
+zero-moment boundary condition that lets the chain simply stop. Axial deformation has no such
+shortcut: force equilibrium only requires the NET force carried past the tip to vanish, but the
+last half-segment (length `dx/2`) is still being stretched by whatever force IS transmitted through
+it, right up to the very end -- there is no point along a stretched bar where the local elongation
+"naturally" goes to zero the way curvature does at a free end. FSM therefore terminates every axial
+chain with one more explicit half-cell spring, `k_tip = 2EA/dx`, connecting the last real segment to
+a massless "phantom" tip-anchor body. This is also why an axial member of `n_seg` segments reserves
+`n_seg + 1` real bodies in Table 1, while a bending member of `n_seg` segments only needs `n_seg`.
+
+#### 2.3 - Convergence to the continuous beam
+
+Because this is just the standard finite-element "half-springs in series" idea, refining the mesh
+(increasing `n_seg`) makes the discrete FSM chain converge to the real continuous Euler-Bernoulli
+cantilever beam. The figure below sweeps `n_seg` for a steel cantilever
+(`L=1 m, E=200 GPa, I=1e-8 m^4`) and compares FSM's first two bending frequencies against the
+exact analytical clamped-free beam solution:
+
+```{figure} /_static/figs/fsm_convergence_cantilever.png
+:width: 80%
+:align: center
+```
+
+Both modes converge cleanly (roughly first-order in `n_seg`), confirming FSM is not just a
+qualitative approximation -- with enough segments it reproduces the real continuous beam to
+whatever accuracy you need.
+
+
+### 3 - How this is done in M4E: Table 1, Table 2, and the generator
+
+Declaring a flexible member in M4E uses the SAME body/joint lists every rigid example in this
+documentation already uses (`joints`, `types`, `parent_cg_to_joint`, `joint_to_child_cg`,
+`prismatic_direction`, `m0`, `J0`) -- this is **Table 1** -- plus one extra column, `flex_bd`:
+
+```python
+# Table 1: one row per body, same convention as any rigid example, plus flex_bd.
+joints               = [[0, 1]]            # ground -> body 1
+types                = ['R']               # mounting joint type (hinge here)
+parent_cg_to_joint   = [[0.0, 0.0]]
+joint_to_child_cg    = [[L / 2.0, 0.0]]    # -> the WHOLE member's own CG (its midpoint)
+prismatic_direction  = [[np.nan, np.nan]]
+flex_bd              = [1]                 # nan/None = rigid; flexible row -> its OWN body index
+m0                   = [None]               # ignored for a flexible row (mass comes from Table 2)
+J0                   = [None]
+```
+
+`flex_bd` is `nan`/`None` for an ordinary rigid row, and for a flexible row it must equal that
+row's own child body index -- in the example above, body 1 is flexible. This is checked:
+declaring the wrong value raises an error.
+
+**Table 2** then declares each flexible member's own physical properties, one row per flexible
+body (an example with multiple flexible bodies is also discussed in this docuemnation), with `flex_bds` listing all flexible bodies discussed in table 1:
+
+```python
+# Table 2: one row per FLEXIBLE member, flex_bds says which body it is.
+flex_bds              = [1]            # Table 2 row 0 -> body 1
+flex_n_seg            = [8]            # number of rigid segments
+flex_L                = [1.0]          # member length [m]
+flex_E                = [200e9]        # Young's modulus [Pa] -- scalar OR per-segment list
+flex_A                = [1e-4]         # cross-sectional area [m^2]
+flex_I                = [1e-8]         # second moment of area [m^4]
+flex_rho              = [7800.0]       # material density [kg/m^3]
+flex_deformation_mode  = ["bending"]   # "bending" or "axial"
+flex_clamp_on          = [True]        # True: clamped root: 2EI/dx; False: pinned root: free hinge
+```
+
+`flex_E`, `flex_A`, `flex_I`, and `flex_rho` each accept either a single scalar (uniform member)
+or a list of `n_seg` values (one per segment) -- a  member with variable properties is declared simply by passing `flex_E`/`flex_I` as per-segment lists
+instead of scalars, e.g. `flex_E = [[20e9, 17e9, 15e9, 12e9, 10e9, 8e9]]` for a 6-segment member
+that is stiffest at the root and softest at the tip. Nothing else about the declaration changes.
+
+Notice that Table 1's `m0`/`J0` are not filled in for a flexible row -- you do NOT need to
+supply mass/inertia yourself. Each segment's mass and inertia are derived automatically from
+Table 2's own `A`, `rho`, and the segment length `dx = L/n_seg`, using the standard uniform-density
+lumped-segment formulas:
+
+$$
+m_i = \rho_i\, A_i\, dx, \qquad
+J_i = \frac{m_i\, dx^2}{12}
+$$
+
+(the second formula is the usual slender-rod inertia about its own CG, `m L^2/12`, applied to one
+segment of length `dx`). This happens for every real segment of every flexible member -- `E`/`I`
+only ever affect the joint stiffnesses (section 2), not the mass. If you need to override this
+(e.g. matching a published lumped-mass model exactly rather than deriving it), Table 2 accepts
+optional `flex_m`/`flex_J` (scalar or per-segment list, same broadcasting rule as `flex_E`/`flex_I`)
+that bypass the formula above for that member.
+
+Once both tables are declared, `mb.generate_flex_model_file(...)` expands them into a complete,
+standalone example file -- the same flat-list convention every hand-written example already uses
+-- that you can import from `main.py` and run exactly like any other prevoisly defined rigid example (integrate, plot,
+animate):
+
+```python
+import multibody as mb
+
+output_path = "Examples_flexible_FSM/_generated_flex_cantilever.py"
+mb.generate_flex_model_file(
+    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction,
+    flex_bd, m0, J0,
+    flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+    flex_deformation_mode, flex_clamp_on,
+    output_path,
+    ic=ic, gVec=np.zeros(n_bodies), tspan=2.0, TimeStep=0.005,
+    overwrite=True,
+)
+```
+
+The generated file is an ordinary, hand-editable `.py` example that includes all the segments and corresponding stiffness values: everything below a
+`USER ADDITIONS` marker is yours to extend (e.g. append your own hydrodynamic/mooring forces),
+and re-running the generator only ever overwrites the part above that marker. Point `main.py`'s
+"Example to import" at the generated file to run it, same as any other example in this
+documentation.
+
+**Starting from `FSM_table_generator.py` instead of a blank page.** Rather than writing a new
+Table 1/Table 2 declaration from scratch, the repository root's `FSM_table_generator.py` is
+already a working library of examples -- labeled `EXAMPLE A` through `EXAMPLE N` -- each a
+self-contained Table 1/Table 2 declaration followed by its own `mb.generate_flex_model_file(...)`
+call. Only a few blocks are left active (uncommented) at any one time; the rest are commented out
+on purpose, so they can be copied, uncommented, and adapted. Between them they already cover most
+of the topologies discussed in this documentation and a few more besides: a single pinned or
+clamped member with a free tip (`EXAMPLE A`/`C`/`G`), a clamped member plus a rigid tip payload
+(`EXAMPLE D`), two flexible links joined through real rigid hub bodies plus a tip payload
+(`EXAMPLE E`), a translating rigid cart carrying a clamped beam, with or without a tip mass
+(`EXAMPLE F`/`I`), a mixed axial + bending chain (`EXAMPLE J` -- the same topology as Example 2
+below), a floating (`'F'`, 3-DOF) body connected to an axial or a bending member (`EXAMPLE K`/`L`),
+a chained two-flexible-link double pendulum (`EXAMPLE B`), a tapered (per-segment `E`/`I`)
+cantilever with its own hand-computed stiffness check (`EXAMPLE M`), and a rigid hub sandwiched
+between a uniform and a tapered bending member (`EXAMPLE N` -- this is Example 5 below, verbatim).
+`EXAMPLE H` and `EXAMPLE I` go a step further: they reproduce published validation cases (Subedi
+et al. 2021; Franco et al. 2018) exactly, with the resulting natural-frequency comparison recorded
+right in the script's own comments -- `EXAMPLE H` is the same model used for Example 4 below.
+
+To build a new example, copy whichever block is topologically closest to what you need, comment
+out whichever block is currently active (every block reuses the same top-level variable names --
+`joints`, `types`, `flex_bds`, etc. -- so only one should be uncommented at a time), then edit the
+Table 1/Table 2 values and initial conditions. Running the script directly
+(`python FSM_table_generator.py`) regenerates the corresponding file(s) under
+`Examples_flexible_FSM/` and/or prints the tables, so a new declaration can be sanity-checked
+before it is wired into a full simulation via `main.py`.
+
+### 4 - Examples
+
+#### Example 1: Flexible OSWEC (single hinged flap)
+
+A single bottom-hinged flap -- the same topology as the rigid OSWEC example earlier in this
+documentation -- but the flap itself is a flexible bending member (`N_SEG=8`) instead of one
+rigid body:
+
+```python
+N_SEG, L_FLAP, EI = 8, 1.0, 40.0   # bending stiffness (lumped E*I, illustrative)
+
+# Table 1: one row per body
+joints               = [[0, 1]]
+types                = ['R']
+parent_cg_to_joint   = [[0.0, 0.0]]           # hinge sits at the ground origin
+joint_to_child_cg    = [[L_FLAP / 2.0, 0.0]]  # -> the WHOLE flap's own CG (its midpoint)
+prismatic_direction  = [[np.nan, np.nan]]
+flex_bd              = [1]
+m0                   = [None]
+J0                   = [None]
+
+# Table 2: one row per FLEXIBLE member
+flex_bds              = [1]
+flex_n_seg            = [N_SEG]
+flex_L                = [L_FLAP]
+flex_E                = [EI]
+flex_A                = [1.0]
+flex_I                = [1.0]
+flex_rho              = [1.0]
+flex_deformation_mode  = ["bending"]
+flex_clamp_on          = [False]   # pinned -- free rotation at the hinge
+```
+
+```text
+----- Table 1 (bodies/joints, pre-expansion) -----
++------+--------+------+--------------+--------------+------------+-----+-----+---------+
+| Body | Parent | Type | p2j          | j2c          | pris_dir   | m0  | J0  | flex_bd |
++======+========+======+==============+==============+============+=====+=====+=========+
+| 1    | 0      | R    | [0.00, 0.00] | [0.50, 0.00] | [nan, nan] | nan | nan | 1       |
++------+--------+------+--------------+--------------+------------+-----+-----+---------+
+
+----- Table 2 (flexible-member properties) -----
++---------+-------+------+-------+------+------+------+-------------+----------+
+| flex_bd | n_seg | L    | E     | A    | I    | rho  | deform_mode | clamp_on |
++=========+=======+======+=======+======+======+======+=============+==========+
+| 1       | 8     | 1.00 | 40.00 | 1.00 | 1.00 | 1.00 | bending     | False    |
++---------+-------+------+-------+------+------+------+-------------+----------+
+```
+
+`generate_flex_model_file(...)` expands Table 1's single row into a complete, standalone `.py`
+file -- `Examples_flexible_FSM/_generated_flex_oswec.py` -- the actual input `MbdSystem` builds
+from. Here is that generated file's core content (imports/checks/animation settings trimmed for
+brevity -- everything else below is copied verbatim):
+
+```python
+# Examples_flexible_FSM/_generated_flex_oswec.py (auto-generated, excerpt)
+
+joints               = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8]]
+types                = ['R', 'R', 'R', 'R', 'R', 'R', 'R', 'R']
+parent_cg_to_joint   = [[0.0, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0],
+                        [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0]]
+joint_to_child_cg    = [[0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0],
+                        [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0]]
+prismatic_direction  = [[float('nan'), float('nan')]] * 8   # all 'R' joints -- no prismatic axis
+
+Force = {}
+Force["TorsionSpring"] = [
+    ([1, 2], [0.0, 320.0]),
+    ([2, 3], [0.0, 320.0]),
+    ([3, 4], [0.0, 320.0]),
+    ([4, 5], [0.0, 320.0]),
+    ([5, 6], [0.0, 320.0]),
+    ([6, 7], [0.0, 320.0]),
+    ([7, 8], [0.0, 320.0]),
+]   # (connection, [theta_0, k]) -- no entry for body 0->1: pinned root, zero stiffness
+
+m0 = [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]
+J0 = [0.00016276041666666666] * 8
+```
+
+`main.py` prints the same `joints`/`types`/... lists above as **Table 3** (the expanded,
+what-`MbdSystem`-actually-uses table -- the SAME call it makes for any rigid example, just with 8
+rows instead of 1):
+
+```text
+----- Table 3 (expanded, what MbdSystem actually uses) -----
++------+--------+------+--------------+--------------+------------+------+------+
+| Body | Parent | Type | p2j          | j2c          | pris_dir   | m0   | J0   |
++======+========+======+==============+==============+============+======+======+
+| 1    | 0      | R    | [0.00, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
+| 2    | 1      | R    | [0.06, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
+| 3    | 2      | R    | [0.06, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
+| 4    | 3      | R    | [0.06, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
+| 5    | 4      | R    | [0.06, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
+| 6    | 5      | R    | [0.06, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
+| 7    | 6      | R    | [0.06, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
+| 8    | 7      | R    | [0.06, 0.00] | [0.06, 0.00] | [nan, nan] | 0.12 | 0.00 |
++------+--------+------+--------------+--------------+------------+------+------+
+```
+
+Each segment is `dx = L_FLAP/N_SEG = 0.125 m` long, so `p2j = j2c = [dx/2, 0] = [0.0625, 0]`
+(rounds to `0.06` above) -- and `m0`/`J0` are exactly the auto-derived values from section 3's
+formula: `m_i = rho*A*dx = 1.0*1.0*0.125 = 0.125` kg and `J_i = m_i*dx^2/12 = 1.6276e-4` kg*m^2
+(rounds to `0.00` at 2-decimal display).
+
+Table 3 itself only covers bodies/joints -- the actual spring stiffnesses are the
+`Force["TorsionSpring"]` list shown in the generated-file excerpt above. Only 7 springs for 8
+bodies -- there is NO entry for body `0 -> 1` because `flex_clamp_on=False` (pinned root):
+section 2.1's free-tip/pinned-root rule applies at the root here too, so that joint carries zero
+stiffness, exactly as declared. Every internal spring's stiffness matches the uniform member
+formula from section 2.1, `k = EI/dx = 40.0/0.125 = 320.0` N*m/rad -- confirming the
+auto-generated values directly against the hand formula.
+
+
+#### Example 2: Mixed axial + bending chain, multiple bodies
+
+A single chain combining both deformation modes and several rigid + flexible bodies: a rigid hub,
+an AXIAL flexible member, a BENDING flexible member, and a rigid tip payload
+(`ground -> hub('R') -> axial member('P') -> bending member('R') -> payload('R')`). Both members use
+`flex_clamp_on=True`: the axial member is clamped to the rigid hub, and the bending member is
+clamped to the axial member's own (already-expanded) tip-anchor body -- which, LOCALLY at that one
+new joint, is just another plain rigid body contributing zero extra compliance, even though the
+tip-anchor itself is free to move (since it's being stretched by the axial spring upstream):
+
+```python
+HUB_HALF, L_AX, L_BEND, N_AX, N_BEND = 0.05, 0.8, 0.6, 4, 4
+EA, RHO_AX = 1.0e6, 2.0      # soft, illustrative axial stiffness
+EI, RHO_BEND = 50.0, 1.0     # soft, illustrative bending stiffness (lumped EI)
+
+# Table 1: one row per body (hub, axial member, bending member, payload)
+joints               = [[0, 1], [1, 2], [2, 3], [3, 4]]
+types                = ['R', 'P', 'R', 'R']
+parent_cg_to_joint   = [[0.1, 0.0], [HUB_HALF, 0.0], [L_AX / 2.0, 0.0], [L_BEND / 2.0, 0.0]]
+joint_to_child_cg    = [[HUB_HALF, 0.0], [L_AX / 2.0, 0.0], [L_BEND / 2.0, 0.0], [0.0, 0.0]]
+prismatic_direction  = [[np.nan, np.nan], [1.0, 0.0], [np.nan, np.nan], [np.nan, np.nan]]
+flex_bd              = [np.nan, 2, 3, np.nan]  # hub (rigid), axial member, bending member, payload (rigid)
+m0                   = [0.05, None, None, 0.2]
+J0                   = [0.001, None, None, 0.001]
+
+# Table 2: one row per FLEXIBLE member (axial, bending)
+flex_bds              = [2, 3]
+flex_n_seg            = [N_AX, N_BEND]
+flex_L                = [L_AX, L_BEND]
+flex_E                = [EA, EI]
+flex_A                = [1.0, 1.0]
+flex_I                = [1.0, 1.0]
+flex_rho              = [RHO_AX, RHO_BEND]
+flex_deformation_mode  = ["axial", "bending"]
+flex_clamp_on          = [True, True]
+```
+
+```text
+----- Table 1 (bodies/joints, pre-expansion) -----
++------+--------+------+--------------+--------------+--------------+------+------+---------+
+| Body | Parent | Type | p2j          | j2c          | pris_dir     | m0   | J0   | flex_bd |
++======+========+======+==============+==============+==============+======+======+=========+
+| 1    | 0      | R    | [0.10, 0.00] | [0.05, 0.00] | [nan, nan]   | 0.05 | 0.00 | nan     |
+| 2    | 1      | P    | [0.05, 0.00] | [0.40, 0.00] | [1.00, 0.00] | nan  | nan  | 2.00    |
+| 3    | 2      | R    | [0.40, 0.00] | [0.30, 0.00] | [nan, nan]   | nan  | nan  | 3.00    |
+| 4    | 3      | R    | [0.30, 0.00] | [0.00, 0.00] | [nan, nan]   | 0.20 | 0.00 | nan     |
++------+--------+------+--------------+--------------+--------------+------+------+---------+
+
+----- Table 2 (flexible-member properties) -----
++---------+-------+------+------------+------+------+------+-------------+----------+
+| flex_bd | n_seg | L    | E          | A    | I    | rho  | deform_mode | clamp_on |
++=========+=======+======+============+======+======+======+=============+==========+
+| 2       | 4     | 0.80 | 1000000.00 | 1.00 | 1.00 | 2.00 | axial       | True     |
+| 3       | 4     | 0.60 | 50.00      | 1.00 | 1.00 | 1.00 | bending     | True     |
++---------+-------+------+------------+------+------+------+-------------+----------+
+```
+
+Note row 2's `n_seg=4` reserves 5 real bodies (4 segments + 1 phantom tip anchor) once expanded --
+exactly the axial free-tip half-cell requirement from section 2.2.
+
+#### Example 3: Flexible FOSWEC (floating base + two hinged flaps)
+
+A floating base ('F', 3 DOF) with two bottom-hinged flaps -- the same topology as the rigid FOSWEC
+example earlier in this documentation -- but both flaps are flexible bending members instead of
+rigid bodies:
+
+```python
+N_SEG, L_FLAP, EI = 6, 1.0, 40.0   # bending stiffness (lumped E*I, illustrative)
+M_FLOAT = 0.5                      # floating base mass
+
+# Table 1: one row per body (floating base, flap1, flap2)
+joints               = [[0, 1], [1, 2], [1, 3]]
+types                = ['F', 'R', 'R']
+parent_cg_to_joint   = [[0.0, 0.0], [-0.5, 0.0], [0.5, 0.0]]
+joint_to_child_cg    = [[np.nan, np.nan], [L_FLAP / 2.0, 0.0], [L_FLAP / 2.0, 0.0]]
+prismatic_direction  = [[np.nan, np.nan]] * 3
+flex_bd              = [np.nan, 2, 3]
+m0                   = [M_FLOAT, None, None]
+J0                   = [0.05, None, None]
+
+# Table 2: one row per FLEXIBLE member (flap1, flap2)
+flex_bds              = [2, 3]
+flex_n_seg            = [N_SEG, N_SEG]
+flex_L                = [L_FLAP, L_FLAP]
+flex_E                = [EI, EI]
+flex_A                = [1.0, 1.0]
+flex_I                = [1.0, 1.0]
+flex_rho              = [1.0, 1.0]
+flex_deformation_mode  = ["bending", "bending"]
+flex_clamp_on          = [False, False]   # pinned hinges
+```
+
+```text
+----- Table 1 (bodies/joints, pre-expansion) -----
++------+--------+------+---------------+--------------+------------+------+------+---------+
+| Body | Parent | Type | p2j           | j2c          | pris_dir   | m0   | J0   | flex_bd |
++======+========+======+===============+==============+============+======+======+=========+
+| 1    | 0      | F    | [0.00, 0.00]  | [nan, nan]   | [nan, nan] | 0.50 | 0.05 | nan     |
+| 2    | 1      | R    | [-0.50, 0.00] | [0.50, 0.00] | [nan, nan] | nan  | nan  | 2.00    |
+| 3    | 1      | R    | [0.50, 0.00]  | [0.50, 0.00] | [nan, nan] | nan  | nan  | 3.00    |
++------+--------+------+---------------+--------------+------------+------+------+---------+
+
+----- Table 2 (flexible-member properties) -----
++---------+-------+------+-------+------+------+------+-------------+----------+
+| flex_bd | n_seg | L    | E     | A    | I    | rho  | deform_mode | clamp_on |
++=========+=======+======+=======+======+======+======+=============+==========+
+| 2       | 6     | 1.00 | 40.00 | 1.00 | 1.00 | 1.00 | bending     | False    |
+| 3       | 6     | 1.00 | 40.00 | 1.00 | 1.00 | 1.00 | bending     | False    |
++---------+-------+------+-------+------+------+------+-------------+----------+
+```
+
+#### Example 4: Flexible member with a rigid child
+
+A flexible member doesn't need to end in a free tip -- a rigid body (a payload, sensor, or tool)
+can be attached at a flexible member's end, exactly like any other rigid-to-rigid joint. This
+example reproduces a published result: Subedi, Tyapin & Hovland (2021), "Dynamic Modeling of
+Planar Multi-Link Flexible Manipulators," *Robotics* 10(2):70 -- link 3 with a 2 kg tip payload
+(rigid payload attached via a very stiff torsional spring added after generation, since M4E has no
+literal "weld" joint). The linearized FSM bending frequencies match the paper's own published
+values closely:
+
+| Mode | FSM [Hz] | Published [Hz] | Error |
+|---|---|---|---|
+| 1 | 4.88 | 4.90 | 0.32% |
+| 2 | 63.15 | 63.97 | 1.28% |
+
+
+
+This example builds link 3 as an ordinary FSM bending member (`N_SEG=10`, clamped root) with the
+2 kg payload welded on via a very stiff torsional spring (`k = 1000 * k_root`), then gets its
+frequencies the same way any linearized M4E system does:
+1. Build the `MbdSystem` from the generated file (identical to any other example).
+2. Linearize it about the straight, undeformed equilibrium -- `numeric_linearize()` returns the
+   joint-space mass matrix `M0` and stiffness matrix `K0`.
+3. Solve the generalized eigenvalue problem `K0 x = omega^2 M0 x`
+   (`scipy.linalg.eigh(K0, M0)`), drop any near-zero eigenvalue, and convert the first two nonzero
+   ones to frequencies: `f = sqrt(eigenvalue)/(2*pi)`.
+
+The resulting FSM frequencies (`4.88 Hz`, `63.15 Hz`) differ from the paper's own values by only
+0.32%/1.28% -- ordinary FSM discretization error (`N_SEG=10` segments standing in for the
+continuous beam), the same convergence trend demonstrated by section 2.3's sweep, not a modeling
+mismatch.
+
+```python
+L3, EI3, RHO3, JP, MP, N_SEG = 1.5, 2.4114e3, 0.7425, 3.2e-4, 2.0, 10
+
+# Table 1: one row per body (link3, rigid tip payload)
+joints               = [[0, 1], [1, 2]]
+types                = ['R', 'R']
+parent_cg_to_joint   = [[0.0, 0.0], [L3 / 2.0, 0.0]]
+joint_to_child_cg    = [[L3 / 2.0, 0.0], [0.0, 0.0]]
+prismatic_direction  = [[np.nan, np.nan]] * 2
+flex_bd              = [1, np.nan]           # row 2 is rigid (the payload)
+m0                   = [None, MP]
+J0                   = [None, JP]
+
+# Table 2: one row per FLEXIBLE member (link3)
+flex_bds              = [1]
+flex_n_seg            = [N_SEG]
+flex_L                = [L3]
+flex_E                = [EI3]
+flex_A                = [1.0]
+flex_I                = [1.0]
+flex_rho              = [RHO3]
+flex_deformation_mode  = ["bending"]
+flex_clamp_on          = [True]
+```
+
+The rigid payload itself is attached AFTER generation, directly in the generated file's own
+`Force["TorsionSpring"]` list -- it can't be part of Table 1/Table 2 since it references real,
+post-expansion body numbers (`10`, `11`) that only exist once the generator has run:
+
+```python
+dx = L3 / N_SEG
+k_root = 2.0 * EI3 * 1.0 / dx             # SAME half-cell root formula as section 2.1
+k_weld = 1000.0 * k_root                   # 1000x stiffer -- approximates a rigid weld
+
+ex.Force["TorsionSpring"] = list(ex.Force["TorsionSpring"]) + [
+    ([N_SEG, N_SEG + 1], [0.0, k_weld])     # body 10 (last beam segment) -> body 11 (payload)
+]
+```
+
+No dampers are used in this example (`Force["TorsionDamper"]`/`Force["TensionDamper"]` stay
+empty).
+
+```text
+----- Table 1 (bodies/joints, pre-expansion) -----
++------+--------+------+--------------+--------------+------------+------+------+---------+
+| Body | Parent | Type | p2j          | j2c          | pris_dir   | m0   | J0   | flex_bd |
++======+========+======+==============+==============+============+======+======+=========+
+| 1    | 0      | R    | [0.00, 0.00] | [0.75, 0.00] | [nan, nan] | nan  | nan  | 1.00    |
+| 2    | 1      | R    | [0.75, 0.00] | [0.00, 0.00] | [nan, nan] | 2.00 | 0.00 | nan     |
++------+--------+------+--------------+--------------+------------+------+------+---------+
+
+----- Table 2 (flexible-member properties) -----
++---------+-------+------+---------+------+------+------+-------------+----------+
+| flex_bd | n_seg | L    | E       | A    | I    | rho  | deform_mode | clamp_on |
++=========+=======+======+=========+======+======+======+=============+==========+
+| 1       | 10    | 1.50 | 2411.40 | 1.00 | 1.00 | 0.74 | bending     | True     |
++---------+-------+------+---------+------+------+------+-------------+----------+
+```
+
+#### Example 5: Two flexible bodies sharing one rigid hub (beam with variable properties)
+
+Table 1/Table 2 are not limited to a single flexible member -- this example declares TWO
+independent flexible bending members (`link1`, `link2`) joined by one ordinary rigid hub body in
+between (`link1 -> hub (rigid) -> link2`), with `link2`'s `E` and `I` both varying per-segment
+(tapered) while `link1` stays uniform, to show the two styles side by side. Not validated against
+any paper -- it is only a structure demo:
+
+```python
+L1, N1, E1, I1 = 0.6, 4, 70e9, 2e-6               # link1: uniform E, I
+L2, N2 = 0.5, 5
+E2_vals = [200e9, 170e9, 140e9, 110e9, 80e9]      # link2: tapered E (stiffer at root)
+I2_vals = [5e-6, 4e-6, 3e-6, 2e-6, 1e-6]          # link2: tapered I (larger cross-section at root)
+
+# Table 1: one row per body (link1, hub, link2)
+joints               = [[0, 1], [1, 2], [2, 3]]
+types                = ['R', 'R', 'R']
+parent_cg_to_joint   = [[0.0, 0.0], [L1 / 2.0, 0.0], [0.0, 0.0]]
+joint_to_child_cg    = [[L1 / 2.0, 0.0], [0.0, 0.0], [L2 / 2.0, 0.0]]
+prismatic_direction  = [[np.nan, np.nan]] * 3
+flex_bd              = [1, np.nan, 3]        # hub (row 2) is rigid
+m0                   = [None, 0.15, None]
+J0                   = [None, 0.0008, None]
+
+# Table 2: one row per FLEXIBLE member (link1, link2)
+flex_bds              = [1, 3]
+flex_n_seg            = [N1, N2]
+flex_L                = [L1, L2]
+flex_E                = [E1, E2_vals]          # link1: scalar, link2: per-segment list
+flex_I                = [I1, I2_vals]          # same -- link2 is the tapered one
+flex_A                = [1.0, 1.0]
+flex_rho              = [2700.0, 2700.0]
+flex_deformation_mode  = ["bending", "bending"]
+flex_clamp_on          = [True, True]
+```
+
+```text
+----- Table 1 (bodies/joints, pre-expansion) -----
++------+--------+------+--------------+--------------+------------+------+------+---------+
+| Body | Parent | Type | p2j          | j2c          | pris_dir   | m0   | J0   | flex_bd |
++======+========+======+==============+==============+============+======+======+=========+
+| 1    | 0      | R    | [0.00, 0.00] | [0.30, 0.00] | [nan, nan] | nan  | nan  | 1.00    |
+| 2    | 1      | R    | [0.30, 0.00] | [0.00, 0.00] | [nan, nan] | 0.15 | 0.00 | nan     |
+| 3    | 2      | R    | [0.00, 0.00] | [0.25, 0.00] | [nan, nan] | nan  | nan  | 3.00    |
++------+--------+------+--------------+--------------+------------+------+------+---------+
+
+----- Table 2 (flexible-member properties) -----
++---------+-------+------+--------------------------------------------------------------------------------------+------+----------------------------------------------------+---------+-------------+----------+
+| flex_bd | n_seg | L    | E                                                                                    | A    | I                                                   | rho     | deform_mode | clamp_on |
++=========+=======+======+======================================================================================+======+====================================================+=========+=============+==========+
+| 1       | 4     | 0.60 | 70000000000.00                                                                       | 1.00 | 2.00e-06                                           | 2700.00 | bending     | True     |
+| 3       | 5     | 0.50 | [200000000000.00, 170000000000.00, 140000000000.00, 110000000000.00, 80000000000.00] | 1.00 | [5.00e-06, 4.00e-06, 3.00e-06, 2.00e-06, 1.00e-06] | 2700.00 | bending     | True     |
++---------+-------+------+----------------------------------------------------------------------------------------+------+----------------------------------------------------+---------+-------------+----------+
+```
+
+Row 1 (`link1`) is uniform (`E`/`I` are plain scalars); row 3 (`link2`) is tapered (`E`/`I` are
+per-segment lists), and row 2's `hub` body does not appear in Table 2 at all since it is rigid.
+
+### 5 - Adding forces or external modules (hydrodynamics, linearization, mooring)
+
+A flexible-body example generated via `generate_flex_model_file` is, once built, an ordinary M4E
+example module with real body numbers, `Force`, and `Initial_Points`. User can define custom forces and points on the bodies as discussed before. Additionally, every external-coupling
+mechanism already covered elsewhere in this documentation applies directly, with no FSM-specific
+extra step:
+
+- **BEM/linear hydrodynamics**: couple radiation/excitation forces at each segment's own CG, the
+  same way the "Linear hydrodynamics examples" section does for
+  ordinary rigid bodies -- see in particular the *Detailed multibody inputs and custom force
+  adapters* example for the exact `ExternalForcesManager`/adapter pattern.
+- **Linearization**: `linearize_mbd`/`LinearizationManager` operate on the expanded (Table 3)
+  body/joint lists exactly like any rigid system -- see the *Frequency-domain analysis* example
+  above for computing RAOs/impedance.
+- **Mooring (MoorDyn)**: attach mooring lines to any real body number (including a flexible
+  member's own segments) the same way the MoorDyn examples in the developer documentation do.
+
+In every case, the only FSM-specific detail to remember is that a flexible member's real body
+numbers are only known AFTER `generate_flex_model_file` expands Table 1/Table 2 -- open the
+generated file (or its printed Table 3, see `multibody.tables.bodies_table`) to find the real body
+number you want to attach a force/mooring line to, then add it past the `USER ADDITIONS` marker,
+exactly like the tip-payload pattern used in Example 4 above.
+
 
 

@@ -93,6 +93,12 @@ class LinearizationManager:
                 f"mainNumVars length {self.mainNumVars.size} must match len(mbd.mainSymVars) "
                 f"{len(self.mbd.mainSymVars)}"
             )
+        # Check that q0 values for float joints match their inputs definition
+        for i, j_type in enumerate(self.mbd.types):
+            if j_type == 'F':
+                idx = sum(mbd_sys.NDOF[:i])
+                if np.linalg.norm(self.q0[idx:idx+2] - mbd_sys.ic[idx:idx+2]) > 1e-8:
+                    raise ValueError(f"q0 for float joint '{i}' must match its joint to parent CG definition. You defined {self.q0[idx:idx+2]}, expected {mbd_sys.ic[idx:idx+2]}")
 
         # equilibrium numeric vector (q=q0, qd=0)
         self.eq_vars                                = self.mainNumVars.copy()
@@ -288,15 +294,15 @@ class LinearizationManager:
                     Kq = np.asarray(K, dtype=float)
                     Fq = np.asarray(Fhat, dtype=complex).reshape(self.nq, 1)
                 else:
-                    Mq = self._broadcast_omega_mat(np.asarray(M, dtype=float), n_omega)
-                    Cq = self._broadcast_omega_mat(np.asarray(C, dtype=float), n_omega)
+                    Mq = broadcast_omega_mat(np.asarray(M, dtype=float), n_omega)
+                    Cq = broadcast_omega_mat(np.asarray(C, dtype=float), n_omega)
                     Kq = np.asarray(K, dtype=float)
                     if Kq.ndim == 3:
                         if Kq.shape[0] == 1:
                             Kq = Kq[0]
                         else:
                             raise ValueError(f"Adapter '{name}' returned omega-dependent K in joint-space.")
-                    Fq = self._broadcast_omega_vec(np.asarray(Fhat, dtype=complex).reshape(self.nq, 1), n_omega)
+                    Fq = broadcast_omega_vec(np.asarray(Fhat, dtype=complex).reshape(self.nq, 1), n_omega)
 
             # Sum (phasor contributes only to forcing)
             M_tot = M_tot + Mq

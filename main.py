@@ -7,6 +7,8 @@ Validated
 """
 
 # Python libraries
+import io
+import contextlib
 import numpy as np
 import sympy as sym
 import matplotlib.pyplot as plt
@@ -18,24 +20,50 @@ import multibody as mbd
 from multibody import load_yaml_as_example
 
 ############ Example to import ############
-# from Examples_mbd import n_pendulum as ex
+# from Examples_mbd import _4_Flexible_pendulum as ex
+# Some hand-written examples print their own (redundant) Points/Forces
+# tables at import time -- suppress that noise, we only want Table 1/2/3
+# (joints/bodies) below, whichever kind of example this is.
+with contextlib.redirect_stdout(io.StringIO()):
+    from Examples_flexible_FSM  import flex_double_pendulum as ex
 
 ############ Example to import ############
-folder  = 'Examples_yaml/'
-ex_file = 'slider_w_dpend'  # Example file to import
-# Load the example from the YAML file
-ex      = load_yaml_as_example(folder + ex_file)
+# folder  = 'Examples_yaml/'
+# ex_file = 'slider_w_dpend'  # Example file to import
+# # Load the example from the YAML file
+# ex      = load_yaml_as_example(folder + ex_file)
 
 # 1- Initialize the Multibody system 
 MBDsys  = MbdSystem.from_example(ex)          
+
+# Print the body/joint table(s) to the terminal. Flex-generated examples
+# (from generate_flex_model_file) embed the ORIGINAL pre-expansion Table 1/
+# Table 2 as flex_table1/flex_table2 -- ordinary rigid examples don't have
+# these attributes at all, so only the one table (joints/types/etc. as
+# declared) is shown for them.
+if hasattr(ex, 'flex_table1'):
+    mbd.tables.bodies_table(**ex.flex_table1, title="\n===== Table 1 (bodies/joints, pre-expansion) =====")
+    mbd.tables.flex_properties_table(**ex.flex_table2, title="\n===== Table 2 (flexible-member properties) =====")
+    mbd.tables.bodies_table(ex.joints, ex.types, ex.parent_cg_to_joint, ex.joint_to_child_cg,
+                             ex.prismatic_direction, ex.m0, ex.J0,
+                             title="\n===== Table 3 (expanded, what MbdSystem actually uses) =====")
+else:
+    mbd.tables.bodies_table(ex.joints, ex.types, ex.parent_cg_to_joint, ex.joint_to_child_cg,
+                             ex.prismatic_direction, ex.m0, ex.J0,
+                             title="\n===== Bodies/joints table =====")
+print()
 
 # 3 - Define initial numerical values
 mainNumVars = np.hstack((MBDsys.ic, ex.ForcesPointsNum, ex.BodyDataNum))
 
 print('Finished initialization')
 # 3 - Integrate over time
+# integrator_kwargs is an OPTIONAL example attribute (e.g. FSM/flexible models
+# set it to force a stiff-compatible implicit solver) -- absent for ordinary
+# rigid examples, so their integrate() call behaves exactly as before.
+integrator_kwargs = getattr(ex, 'integrator_kwargs', {})
 sol     = MBDsys.integrate(mainNumVars, ex.m0, ex.J0, 
-                           tspan=ex.tspan, dt=ex.TimeStep)  # ❷ run
+                           tspan=ex.tspan, dt=ex.TimeStep, **integrator_kwargs)  # ❷ run
 
 
 com_positions, com_velocities, angle_positions, joint = mbd.evaluate_trajectories(MBDsys, sol, mainNumVars)

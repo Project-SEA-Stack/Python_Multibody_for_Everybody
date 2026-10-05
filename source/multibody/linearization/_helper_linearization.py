@@ -5,10 +5,10 @@ def detect_space(A: np.ndarray, nb: int, nq: int) -> str:
     ncart   = 3 * int(nb)
     sh      = A.shape[-2:]
 
-    if sh == (nq, nq):
-        return "joint"
     if sh == (ncart, ncart):
         return "global"
+    if sh == (nq, nq):
+        return "joint"
     raise ValueError(f"Cannot infer space from trailing shape {sh} (expected {(nq,nq)} or {(ncart,ncart)}).")
 
 def as_col(v: np.ndarray) -> np.ndarray:

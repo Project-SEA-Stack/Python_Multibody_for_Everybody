@@ -12,6 +12,7 @@ from .multibody_core.post_process               import evaluate_trajectories
 from .ext_forces_manager.coupling_main          import ExternalForcesManager
 from .linearization.linearize_eom               import linearize_mbd
 from .yaml_parser.yaml_adapter                  import load_yaml_as_example
+from .flexible.flex_file_writer                 import generate_flex_model_file
 
 # — Plotting namespace -------------------------------
 from . import plotting as plot
@@ -38,6 +39,7 @@ __all__ = [
   "evaluate_trajectories",
   "linearize_mbd",
   "load_yaml_as_example",
+  "generate_flex_model_file",
   # namespaces
   "plot",
   "checks",

@@ -92,14 +92,10 @@ class HydroLinearMCKF:
         equilibrium_pos         = np.hstack([equilibrium_pos, np.zeros(len(mbd_sys.QD), dtype=float)])
         self.equilibrium_pos    = equilibrium_pos.reshape(-1)
 
-        # Extract and map independent degrees of freedom
-        if body_inputs is not None:
-            self._extract_independent_dofs()
-
         # Prepare FloatingBody objects and compute buoyancy metadata
         prepared_bodies = self._prepare_bodies_for_bem() if body_inputs is not None else {}
         all_bodies      = self._compute_with_hydrostatics(prepared_bodies) # NOTE: this may be overwritting directly passed data
-
+        
         # Load data from .nc file or compute with capytaine if not provided
         if data is not None:
             self._load_data(data, omega_r)
@@ -285,7 +281,8 @@ class HydroLinearMCKF:
 
     def _prepare_bodies_for_bem(self) -> Dict[int, cpt.FloatingBody]:
         """Create and configure FloatingBody objects from body_inputs descriptors."""
-        eq_vars    = self.equilibrium_pos.copy()
+        sumDOF     = self.equilibrium_pos.shape[0]
+        eq_vars    = np.hstack((self.equilibrium_pos.copy(), self.mainNumVars[sumDOF:]))
         CGpos_2d   = np.asarray(self._mbd.CGpoints_func(*eq_vars), dtype=float)  # (NB, 2)
         all_cgs_3d = np.insert(CGpos_2d, 1, 0.0, axis=1)                          # (NB, 3)
         first_cg   = all_cgs_3d[0]
@@ -374,7 +371,9 @@ class HydroLinearMCKF:
         self._load_data(dataset, omega_r)
 
         if save_dir is not None:
-            eq_vars     = self.equilibrium_pos.copy()
+            # eq_vars     = self.equilibrium_pos.copy()
+            sumDOF     = self.equilibrium_pos.shape[0]
+            eq_vars    = np.hstack((self.equilibrium_pos.copy(), self.mainNumVars[sumDOF:]))
             CGs2D       = np.asarray(self._mbd.CGpoints_func(*eq_vars), dtype=float)
             CGs         = np.insert(CGs2D, 1, 0.0, axis=1)
             CoB         = np.asarray(self.arm_global, dtype=float) + CGs  # (3,NB)
