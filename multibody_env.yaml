@@ -7,7 +7,7 @@ dependencies:
   - numpy
   - scipy
   - sympy
-  - pandas
+  - pandas<3
   - matplotlib
   - networkx
   - pyyaml
