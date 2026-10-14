@@ -20,14 +20,7 @@ import multibody as mbd
 from multibody import load_yaml_as_example
 
 ############ Example to import ############
-# from Examples_mbd import _4_Flexible_pendulum as ex
-# Some hand-written examples print their own (redundant) Points/Forces
-# tables at import time -- suppress that noise, we only want Table 1/2/3
-# (joints/bodies) below, whichever kind of example this is.
-with contextlib.redirect_stdout(io.StringIO()):
-    from Examples_flexible_FSM  import flex_double_pendulum as ex
-
-############ Example to import ############
+from Examples_mbd import _1_Double_pendulum as ex
 # folder  = 'Examples_yaml/'
 # ex_file = 'slider_w_dpend'  # Example file to import
 # # Load the example from the YAML file
