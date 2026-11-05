@@ -51,6 +51,10 @@ position's real body index):
 import math
 import warnings
 from ..multibody_core._springs_dampers_helpers import parse_point_str
+from ..checks.flex_distribution_check import validate_row
+from ._flex_distribution_helper import (
+    resolve_compliance_half_cells, resolve_mass_and_inertia, resolve_display_samples,
+)
 
 FORCE_ENTRY_TYPES = (
     "PointsBD", "CG", "TensionSpring", "TensionDamper",
@@ -537,7 +541,7 @@ def _joint_stiffness(compliances):
 
 def _expand_bending_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg, index_map, flex_id,
                          flex_n_seg, flex_E, flex_A, flex_I, flex_rho, flex_m, flex_J,
-                         L, root_spec, ic_lookup=None):
+                         L, root_spec, ic_lookup=None, flex_x_dist=None):
     """
     Build the n_seg segment bodies + internal 'R'+TorsionSpring joints for
     ONE bending-mode (deformation_mode="bending") flex row.
@@ -553,12 +557,20 @@ def _expand_bending_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_
     set the root TorsionSpring's theta_0 to the member's actual baseline
     orientation. Defaults to 0.0 if not supplied.
 
+    flex_x_dist : optional list, parallel to flex_E/flex_I/flex_A/flex_rho --
+    None (default) for an ordinary row, or this row's declared sympy.Symbol
+    if flex_E/flex_I/flex_A/flex_rho contain a symbolic distribution (see
+    _flex_distribution_helper module docstring).
+
     Returns
     -------
     dict with keys: joints, types, parent_cg_to_joint, joint_to_child_cg,
     prismatic_direction (all length n_seg, in root-to-tip order), torsion_springs
     (list of ([parent_real, child_real], [theta0, k]) -- omitted entirely for
-    any joint whose stiffness is "free", i.e. k=0), m0, J0 (length n_seg).
+    any joint whose stiffness is "free", i.e. k=0), m0, J0 (length n_seg),
+    display (dict of flex_E/flex_I/flex_A/flex_rho, baked to plain per-segment
+    floats for Table 2 echo/printing -- identical to the original input for
+    an ordinary row, midpoint-sampled for one with a distribution).
     """
     if len(root_spec) != 1:
         raise NotImplementedError(
@@ -576,16 +588,40 @@ def _expand_bending_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_
     if len(reals) != n_seg:
         raise ValueError(f"row {logical_idx}: index map reserved {len(reals)} bodies, expected n_seg={n_seg}.")
 
-    E   = _broadcast(flex_E[fid - 1], n_seg, "flex_E")
-    I   = _broadcast(flex_I[fid - 1], n_seg, "flex_I")
-    A   = _broadcast(flex_A[fid - 1], n_seg, "flex_A")
-    rho = _broadcast(flex_rho[fid - 1], n_seg, "flex_rho")
+    dx = L / n_seg
+    x_dist_sym = flex_x_dist[fid - 1] if flex_x_dist is not None else None
+    validate_row(
+        x_dist_sym,
+        {"E": flex_E[fid - 1], "I": flex_I[fid - 1], "rho": flex_rho[fid - 1], "A": flex_A[fid - 1]},
+        row_label=logical_idx,
+    )
+    if x_dist_sym is None:
+        E   = _broadcast(flex_E[fid - 1], n_seg, "flex_E")
+        I   = _broadcast(flex_I[fid - 1], n_seg, "flex_I")
+        A   = _broadcast(flex_A[fid - 1], n_seg, "flex_A")
+        rho = _broadcast(flex_rho[fid - 1], n_seg, "flex_rho")
+        half_left = half_right = [_half_cell_compliance(E[i], I[i], dx) for i in range(n_seg)]
+        m_list = [rho[i] * A[i] * dx for i in range(n_seg)]
+        J_list = [m_list[i] * dx * dx / 12.0 for i in range(n_seg)]
+        display = {"E": flex_E[fid - 1], "I": flex_I[fid - 1], "A": flex_A[fid - 1], "rho": flex_rho[fid - 1]}
+    else:
+        half_left, half_right = resolve_compliance_half_cells(
+            flex_E[fid - 1], flex_I[fid - 1], x_dist_sym, n_seg, dx, logical_idx, "I")
+        m_list, J_list = resolve_mass_and_inertia(
+            flex_rho[fid - 1], flex_A[fid - 1], x_dist_sym, n_seg, dx, logical_idx)
+        display = {
+            name: resolve_display_samples(value, x_dist_sym, n_seg, dx)
+            for name, value in (
+                ("E", flex_E[fid - 1]), ("I", flex_I[fid - 1]),
+                ("A", flex_A[fid - 1]), ("rho", flex_rho[fid - 1]),
+            )
+        }
+
     m_val = flex_m[fid - 1] if flex_m is not None else None
     J_val = flex_J[fid - 1] if flex_J is not None else None
     m_override = _broadcast(m_val, n_seg, "flex_m") if not _is_unset(m_val) else None
     J_override = _broadcast(J_val, n_seg, "flex_J") if not _is_unset(J_val) else None
 
-    dx = L / n_seg
     own_vec = joint_to_child_cg[logical_idx - 1]
     own_len = _vec_norm(own_vec)
     if own_len < 1e-12:
@@ -620,20 +656,17 @@ def _expand_bending_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_
             out_parent_cg_to_joint.append([dx_vec[0] / 2.0, dx_vec[1] / 2.0])
         out_joint_to_child_cg.append([dx_vec[0] / 2.0, dx_vec[1] / 2.0])
 
-        m_i = m_override[seg_i] if m_override is not None else rho[seg_i] * A[seg_i] * dx
-        J_i = J_override[seg_i] if J_override is not None else m_i * dx * dx / 12.0
+        m_i = m_override[seg_i] if m_override is not None else m_list[seg_i]
+        J_i = J_override[seg_i] if J_override is not None else J_list[seg_i]
         m0.append(m_i)
         J0.append(J_i)
 
         if seg_i == 0:
-            k = (_joint_stiffness([0.0, _half_cell_compliance(E[0], I[0], dx)])
+            k = (_joint_stiffness([0.0, half_left[0]])
                  if root["stiffness"] == "half_cell" else 0.0)
             theta0 = ic_lookup(child_real) if (k > 0 and ic_lookup is not None) else 0.0
         else:
-            k = _joint_stiffness([
-                _half_cell_compliance(E[seg_i - 1], I[seg_i - 1], dx),
-                _half_cell_compliance(E[seg_i], I[seg_i], dx),
-            ])
+            k = _joint_stiffness([half_right[seg_i - 1], half_left[seg_i]])
             theta0 = 0.0  # internal joints measure a genuine relative angle -> always 0
 
         if k > 0:
@@ -646,12 +679,13 @@ def _expand_bending_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_
         "prismatic_direction": out_prismatic_direction,
         "torsion_springs": torsion_springs,
         "m0": m0, "J0": J0,
+        "display": display,
     }
 
 
 def _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg, index_map, flex_id,
                        flex_n_seg, flex_E, flex_A, flex_I, flex_rho, flex_m, flex_J,
-                       L, root_spec, gr_points):
+                       L, root_spec, gr_points, flex_x_dist=None):
     """
     Build the n_seg segment bodies PLUS one phantom TIP-ANCHOR body
     (n_seg+1 real bodies total) + internal 'P'+TensionSpring joints, for
@@ -679,11 +713,19 @@ def _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg
     Initial_Points["GR"] the user already supplied) and referenced via a
     GR point-string instead.
 
+    flex_x_dist : optional list, parallel to flex_E/flex_I/flex_A/flex_rho --
+    None (default) for an ordinary row, or this row's declared sympy.Symbol
+    if flex_E/flex_A/flex_rho contain a symbolic distribution (flex_I is
+    never read for an axial row, so it is never validated here either --
+    see _flex_distribution_helper module docstring).
+
     Returns
     -------
     dict with keys: joints, types, parent_cg_to_joint, joint_to_child_cg,
     prismatic_direction (all length n_seg+1), tension_springs (list of
-    ((pt1_str, pt2_str), [l0, k])), m0, J0 (length n_seg+1).
+    ((pt1_str, pt2_str), [l0, k])), m0, J0 (length n_seg+1), display (dict
+    of flex_E/flex_I/flex_A/flex_rho, baked to plain per-segment floats for
+    Table 2 echo/printing).
     """
     if len(root_spec) != 1:
         raise NotImplementedError(
@@ -702,15 +744,39 @@ def _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg
         raise ValueError(f"row {logical_idx}: index map reserved {len(reals)} bodies, expected n_seg+1={n_seg + 1}.")
     seg_reals, anchor_real = reals[:-1], reals[-1]
 
-    E   = _broadcast(flex_E[fid - 1], n_seg, "flex_E")
-    A   = _broadcast(flex_A[fid - 1], n_seg, "flex_A")
-    rho = _broadcast(flex_rho[fid - 1], n_seg, "flex_rho")
+    dx = L / n_seg
+    x_dist_sym = flex_x_dist[fid - 1] if flex_x_dist is not None else None
+    validate_row(
+        x_dist_sym,
+        {"E": flex_E[fid - 1], "A": flex_A[fid - 1], "rho": flex_rho[fid - 1]},
+        row_label=logical_idx,
+    )
+    if x_dist_sym is None:
+        E   = _broadcast(flex_E[fid - 1], n_seg, "flex_E")
+        A   = _broadcast(flex_A[fid - 1], n_seg, "flex_A")
+        rho = _broadcast(flex_rho[fid - 1], n_seg, "flex_rho")
+        half_left = half_right = [_half_cell_compliance(E[i], A[i], dx) for i in range(n_seg)]
+        m_list = [rho[i] * A[i] * dx for i in range(n_seg)]
+        J_list = [m_list[i] * dx * dx / 12.0 for i in range(n_seg)]
+        display = {"E": flex_E[fid - 1], "I": flex_I[fid - 1], "A": flex_A[fid - 1], "rho": flex_rho[fid - 1]}
+    else:
+        half_left, half_right = resolve_compliance_half_cells(
+            flex_E[fid - 1], flex_A[fid - 1], x_dist_sym, n_seg, dx, logical_idx, "A")
+        m_list, J_list = resolve_mass_and_inertia(
+            flex_rho[fid - 1], flex_A[fid - 1], x_dist_sym, n_seg, dx, logical_idx)
+        display = {
+            name: resolve_display_samples(value, x_dist_sym, n_seg, dx)
+            for name, value in (
+                ("E", flex_E[fid - 1]), ("I", flex_I[fid - 1]),
+                ("A", flex_A[fid - 1]), ("rho", flex_rho[fid - 1]),
+            )
+        }
+
     m_val = flex_m[fid - 1] if flex_m is not None else None
     J_val = flex_J[fid - 1] if flex_J is not None else None
     m_override = _broadcast(m_val, n_seg, "flex_m") if not _is_unset(m_val) else None
     J_override = _broadcast(J_val, n_seg, "flex_J") if not _is_unset(J_val) else None
 
-    dx = L / n_seg
     own_vec = joint_to_child_cg[logical_idx - 1]
     own_len = _vec_norm(own_vec)
     if own_len < 1e-12:
@@ -743,12 +809,12 @@ def _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg
     out_parent_cg_to_joint.append(list(row_parent_cg_to_joint))
     out_joint_to_child_cg.append([dx_vec[0] / 2.0, dx_vec[1] / 2.0])
 
-    m_i = m_override[0] if m_override is not None else rho[0] * A[0] * dx
-    J_i = J_override[0] if J_override is not None else m_i * dx * dx / 12.0
+    m_i = m_override[0] if m_override is not None else m_list[0]
+    J_i = J_override[0] if J_override is not None else J_list[0]
     m0.append(m_i)
     J0.append(J_i)
 
-    k_root = (_joint_stiffness([0.0, _half_cell_compliance(E[0], A[0], dx)])
+    k_root = (_joint_stiffness([0.0, half_left[0]])
               if root["stiffness"] == "half_cell" else 0.0)
     if k_root > 0:
         l0_root = root_offset_len + dx / 2.0
@@ -768,15 +834,12 @@ def _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg
         out_parent_cg_to_joint.append([dx_vec[0] / 2.0, dx_vec[1] / 2.0])
         out_joint_to_child_cg.append([dx_vec[0] / 2.0, dx_vec[1] / 2.0])
 
-        m_i = m_override[seg_i] if m_override is not None else rho[seg_i] * A[seg_i] * dx
-        J_i = J_override[seg_i] if J_override is not None else m_i * dx * dx / 12.0
+        m_i = m_override[seg_i] if m_override is not None else m_list[seg_i]
+        J_i = J_override[seg_i] if J_override is not None else J_list[seg_i]
         m0.append(m_i)
         J0.append(J_i)
 
-        k_int = _joint_stiffness([
-            _half_cell_compliance(E[seg_i - 1], A[seg_i - 1], dx),
-            _half_cell_compliance(E[seg_i], A[seg_i], dx),
-        ])
+        k_int = _joint_stiffness([half_right[seg_i - 1], half_left[seg_i]])
         tension_springs.append(((cg_point(this_real), cg_point(next_real)), [dx, k_int]))
 
     # --- tip joint: last segment -> phantom tip anchor (ALWAYS present,
@@ -789,7 +852,7 @@ def _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg
     m0.append(1e-6)
     J0.append(1e-6)
 
-    k_tip = _joint_stiffness([0.0, _half_cell_compliance(E[-1], A[-1], dx)])
+    k_tip = _joint_stiffness([0.0, half_right[-1]])
     tension_springs.append(((cg_point(seg_reals[-1]), cg_point(anchor_real)), [dx / 2.0, k_tip]))
 
     return {
@@ -799,6 +862,7 @@ def _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg
         "prismatic_direction": out_prismatic_direction,
         "tension_springs": tension_springs,
         "m0": m0, "J0": J0,
+        "display": display,
     }
 
 
@@ -869,13 +933,19 @@ def expand_flex_table(joints, types, parent_cg_to_joint, joint_to_child_cg, pris
                       flex_bd, m0, J0,
                       flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
                       flex_deformation_mode, flex_clamp_on, flex_m=None, flex_J=None,
-                      Force=None, Initial_Points=None, ic=None):
+                      flex_x_dist=None, Force=None, Initial_Points=None, ic=None):
     """
     The main orchestrator. Operates on the SAME parallel lists any rigid-case
     script already uses (joints, types, parent_cg_to_joint, joint_to_child_cg,
     prismatic_direction, m0, J0), plus flex_bd and Table 2's own parallel
     lists (flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
     flex_deformation_mode, flex_clamp_on, and the optional flex_m/flex_J).
+
+    flex_x_dist : optional list, parallel to flex_bds (one entry per Table 2
+    row) -- None (default, for every row) or, per row, None for an ordinary
+    row or a single sympy.Symbol if that row's flex_E/flex_I/flex_A/flex_rho
+    contain a symbolic distribution in that symbol (see _flex_distribution_helper
+    module docstring for the full contract and physics rationale).
 
     ic : optional array-like (length 2*n_real_bodies: positions then
     velocities), the SAME initial-condition array eventually written into
@@ -890,7 +960,10 @@ def expand_flex_table(joints, types, parent_cg_to_joint, joint_to_child_cg, pris
 
     Returns a dict of fully expanded flat lists ready to build an
     ``MbdSystem``: joints, types, parent_cg_to_joint, joint_to_child_cg,
-    prismatic_direction, Force, Initial_Points, m0, J0.
+    prismatic_direction, Force, Initial_Points, m0, J0, plus
+    flex_table2_display (flex_E/flex_I/flex_A/flex_rho, each parallel to
+    flex_bds, baked to plain per-segment floats for any row with a
+    distribution -- safe to echo/print, unlike the raw symbolic input).
     """
     flex_id, flex_ids = _translate_flex_bd(flex_bd, flex_bds, len(joints))
 
@@ -899,6 +972,8 @@ def expand_flex_table(joints, types, parent_cg_to_joint, joint_to_child_cg, pris
         flex_m = [None] * n_flex
     if flex_J is None:
         flex_J = [None] * n_flex
+    if flex_x_dist is None:
+        flex_x_dist = [None] * n_flex
 
     Force = Force or {}
     index_map, n_real, dof_start, n_total_dof = _build_index_map(joints, types, flex_id, flex_n_seg, flex_deformation_mode)
@@ -920,6 +995,8 @@ def expand_flex_table(joints, types, parent_cg_to_joint, joint_to_child_cg, pris
     torsion_springs, tension_springs = [], []
     out_m0 = [None] * n_real
     out_J0 = [None] * n_real
+    flex_table2_display = {"flex_E": list(flex_E), "flex_I": list(flex_I),
+                            "flex_A": list(flex_A), "flex_rho": list(flex_rho)}
 
     for logical_idx in range(1, len(joints) + 1):
         fid = flex_id[logical_idx - 1]
@@ -952,12 +1029,14 @@ def expand_flex_table(joints, types, parent_cg_to_joint, joint_to_child_cg, pris
             if deformation_mode == "bending":
                 expanded = _expand_bending_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg, index_map,
                                                 flex_id, flex_n_seg, flex_E, flex_A, flex_I, flex_rho,
-                                                flex_m, flex_J, L, root_spec, ic_lookup=ic_lookup)
+                                                flex_m, flex_J, L, root_spec, ic_lookup=ic_lookup,
+                                                flex_x_dist=flex_x_dist)
                 torsion_springs.extend(expanded["torsion_springs"])
             elif deformation_mode == "axial":
                 expanded = _expand_axial_row(logical_idx, joints, parent_cg_to_joint, joint_to_child_cg, index_map,
                                               flex_id, flex_n_seg, flex_E, flex_A, flex_I, flex_rho,
-                                              flex_m, flex_J, L, root_spec, gr_points)
+                                              flex_m, flex_J, L, root_spec, gr_points,
+                                              flex_x_dist=flex_x_dist)
                 tension_springs.extend(expanded["tension_springs"])
             else:
                 raise NotImplementedError(
@@ -970,6 +1049,11 @@ def expand_flex_table(joints, types, parent_cg_to_joint, joint_to_child_cg, pris
             out_parent_cg_to_joint.extend(expanded["parent_cg_to_joint"])
             out_joint_to_child_cg.extend(expanded["joint_to_child_cg"])
             out_prismatic_direction.extend(expanded["prismatic_direction"])
+
+            flex_table2_display["flex_E"][fid - 1] = expanded["display"]["E"]
+            flex_table2_display["flex_I"][fid - 1] = expanded["display"]["I"]
+            flex_table2_display["flex_A"][fid - 1] = expanded["display"]["A"]
+            flex_table2_display["flex_rho"][fid - 1] = expanded["display"]["rho"]
 
             reals = index_map[logical_idx]["real"]
             for offset, real in enumerate(reals):
@@ -997,6 +1081,7 @@ def expand_flex_table(joints, types, parent_cg_to_joint, joint_to_child_cg, pris
         "n_real_bodies": n_real,
         "n_total_dof": n_total_dof,
         "index_map": index_map,
+        "flex_table2_display": flex_table2_display,
     }
 
 

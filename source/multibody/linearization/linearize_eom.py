@@ -16,7 +16,8 @@ def linearize_mbd(MBD, q0, m0, J0, print_sym_matrices=False):
     Linearize B(q)^T M B(q) qdd = B(q)^T ( f − M dotB(q,qd) qd )
     about (q0, qd0) with qdd0 = 0, using your class' symbolic fields.
 
-    Expected attributes on `MBD` (names follow your codebase):
+    Expected attributes on `MBD` (names follow your codebase)::
+    
         MBD.Q   -> list[Sym]     : q symbols
         MBD.QD  -> list[Sym]     : qd symbols
         MBD.R   -> sym.Matrix    : B(q) (cartesian-velocity map)

@@ -157,7 +157,8 @@ def generate_flex_model_file(joints, types, parent_cg_to_joint, joint_to_child_c
                               prismatic_direction, flex_bd, m0, J0,
                               flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
                               flex_deformation_mode, flex_clamp_on, output_path, *,
-                              flex_m=None, flex_J=None, Force=None, Initial_Points=None,
+                              flex_m=None, flex_J=None, flex_x_dist=None,
+                              Force=None, Initial_Points=None,
                               ic=None, gVec=None, g=9.81, tspan=5.0, TimeStep=0.05,
                               animation_on=1, SaveMovieOn=None, plotTstep=5,
                               integrator_kwargs=None,
@@ -183,6 +184,16 @@ def generate_flex_model_file(joints, types, parent_cg_to_joint, joint_to_child_c
         The actual (1-based) body index of each Table 2 row, e.g. [2, 4].
         Cross-validated against Table 1's flex_bd -- every flexible row in
         Table 1 must appear here exactly once, and vice versa.
+    flex_x_dist : optional list, parallel to flex_bds
+        None (default, every row) or, per row, None for an ordinary row or a
+        single sympy.Symbol declaring that row's flex_E/flex_I/flex_A/flex_rho
+        contain a symbolic distribution in that symbol -- a continuously
+        varying property instead of a per-segment constant. See
+        source/multibody/flexible/_flex_distribution_helper.py's module
+        docstring for the full contract and physics rationale. The generated
+        file's own echoed Table 2 always contains plain, resolved
+        per-segment numbers, never a raw sympy expression, regardless of
+        this argument.
     output_path : str
         Path to write the generated .py file to.
     Force, Initial_Points : optional dict
@@ -213,7 +224,7 @@ def generate_flex_model_file(joints, types, parent_cg_to_joint, joint_to_child_c
                                   prismatic_direction, flex_bd, m0, J0,
                                   flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
                                   flex_deformation_mode, flex_clamp_on,
-                                  flex_m=flex_m, flex_J=flex_J,
+                                  flex_m=flex_m, flex_J=flex_J, flex_x_dist=flex_x_dist,
                                   Force=Force, Initial_Points=Initial_Points, ic=ic)
     n_bodies = len(expanded["types"])
     n_total_dof = expanded["n_total_dof"]
@@ -228,9 +239,11 @@ def generate_flex_model_file(joints, types, parent_cg_to_joint, joint_to_child_c
         "parent_cg_to_joint": parent_cg_to_joint, "joint_to_child_cg": joint_to_child_cg,
         "prismatic_direction": prismatic_direction, "m0": m0, "J0": J0, "flex_bd": flex_bd,
     }
+    display = expanded["flex_table2_display"]
     table2 = {
         "flex_bds": flex_bds, "flex_n_seg": flex_n_seg, "flex_L": flex_L,
-        "flex_E": flex_E, "flex_A": flex_A, "flex_I": flex_I, "flex_rho": flex_rho,
+        "flex_E": display["flex_E"], "flex_A": display["flex_A"],
+        "flex_I": display["flex_I"], "flex_rho": display["flex_rho"],
         "flex_deformation_mode": flex_deformation_mode, "flex_clamp_on": flex_clamp_on,
         "flex_m": flex_m, "flex_J": flex_J,
     }

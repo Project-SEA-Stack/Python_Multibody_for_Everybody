@@ -1,3 +1,7 @@
+**For questions, contact:**
+
+**sahand.sabet@nlr.gov, alvaro.diazflorescaminero@nlr.gov**
+
 # User documentation
 This chapter aims to help understand the M4E 2D code usage. 
 This is not the documentation for developers, but rather teaches how to define
@@ -717,9 +721,13 @@ Q'   = [  X_1,   Z_1,   Theta_1,   Theta_2,   Theta_3]
 ```
 
 There are three subindices: 1, 2, 3. This means that we have three bodies. The first body was defined 
-as a floating body or joint. Floating joints have in 2D three degrees of freedom, two translations:
-`X,Z` and one rotation $\theta$. The second and third bodies are connected to the first one through 
-revolut joints, and this joint have one rotational degree of freedom: $\theta$. So in summary, $[X_1, Z_1]$ show the position of the CG of the platform and $[\theta_1, \theta_2, \theta_3]$ show the pitch angle of the platform, the first flap, and the second flap, respectively.
+There are three subindices: 1, 2, 3. This means that we have three bodies. Body 1 is
+the floating platform, represented in the model by an F (floating) joint to ground;
+this is a modeling connection, not a physical support. In 2D, the floating body has
+three degrees of freedom: translations `X,Z` and rotation $\theta$. Bodies 2 and 3
+connect to the platform through revolute joints, each with one rotational degree of
+freedom. Thus $[X_1, Z_1]$ are the platform CG position, while
+$[\theta_1, \theta_2, \theta_3]$ are the platform and flap angles.
 
 #### **4 - Points definition**
 
@@ -1425,7 +1433,7 @@ stretches) as a chain of `n_seg` **rigid** segments connected by ordinary revolu
 or prismatic ('P', axial) joints, each carrying a spring whose stiffness is derived from the
 member's own `E`, `I`/`A`, and length. As `n_seg` increases, this discrete chain converges to the
 real continuous beam (see the convergence plot in section 2) -- but at any finite `n_seg` it is,
-numerically, just an ordinary M4E multibody system comprised of multiple rigid bodies: every segment is a plain rigid body with its
+numerically, just an ordinary M4E multibody system composed of multiple rigid bodies: every segment is a plain rigid body with its
 own CG, mass, and inertia, connected by joints and springs you already know how to define (discussed in previous sections).
 
 This is what makes FSM convenient for BEM-based hydrodynamics in particular. Computing genuinely
@@ -1469,15 +1477,15 @@ P.; Chung, I.; Benedict, R. "Plastic hinge approach to vehicle crash simulation.
 #### 2.1 - Bending: from Euler-Bernoulli curvature to a half-cell spring
 
 Start from the ordinary Euler-Bernoulli relation between curvature and bending moment,
-`kappa = M/(EI)`. Treat one segment of length `ell` as carrying a constant moment `M` along its
-own length (reasonable once `ell=dx` is small). The relative end-to-end rotation it accumulates is
+`kappa = M/(EI)`. Treat one segment of length `dx` as carrying a constant moment `M` along its
+own length (reasonable once `dx` is small). The relative end-to-end rotation it accumulates is
 then simply curvature times length:
 
 $$
-\theta = \kappa\, \ell = \frac{M\,\ell}{EI}
+\theta = \kappa\, dx = \frac{M\,dx}{EI}
 \quad\Longrightarrow\quad
-k_{\text{segment}} = \frac{M}{\theta} = \frac{EI}{\ell}, \qquad
-C_{\text{segment}} = \frac{1}{k_{\text{segment}}} = \frac{\ell}{EI}.
+k_{\text{segment}} = \frac{M}{\theta} = \frac{EI}{dx}, \qquad
+C_{\text{segment}} = \frac{1}{k_{\text{segment}}} = \frac{dx}{EI}.
 $$
 
 FSM does not place this whole-segment spring at one of the segment's ends -- it splits the
@@ -1510,14 +1518,14 @@ stiffness then depends on what is on its two sides (automatically assigned by th
 #### 2.2 - Axial: the same half-cell idea, from Hooke's law
 
 The axial case follows an identical derivation, with Hooke's law `sigma = E epsilon` in place of
-the curvature relation. A uniform bar of length `ell` under axial force `F` stretches by
-`delta = F ell/(EA)`, so:
+the curvature relation. A uniform bar of length `dx` under axial force `F` stretches by
+`delta = F dx/(EA)`, so:
 
 $$
-\delta = \frac{F\,\ell}{EA}
+\delta = \frac{F\,dx}{EA}
 \quad\Longrightarrow\quad
-k_{\text{segment}} = \frac{F}{\delta} = \frac{EA}{\ell}, \qquad
-C_{\text{segment}} = \frac{\ell}{EA}.
+k_{\text{segment}} = \frac{F}{\delta} = \frac{EA}{dx}, \qquad
+C_{\text{segment}} = \frac{dx}{EA}.
 $$
 
 Splitting this into two half-cells of length `dx/2`, each with compliance `dx/(2EA)`, and combining
@@ -1543,7 +1551,7 @@ a massless "phantom" tip-anchor body. This is also why an axial member of `n_seg
 
 #### 2.3 - Convergence to the continuous beam
 
-Because this is just the standard finite-element "half-springs in series" idea, refining the mesh
+Refining the mesh
 (increasing `n_seg`) makes the discrete FSM chain converge to the real continuous Euler-Bernoulli
 cantilever beam. The figure below sweeps `n_seg` for a steel cantilever
 (`L=1 m, E=200 GPa, I=1e-8 m^4`) and compares FSM's first two bending frequencies against the
@@ -2063,11 +2071,175 @@ extra step:
 - **Mooring (MoorDyn)**: attach mooring lines to any real body number (including a flexible
   member's own segments) the same way the MoorDyn examples in the developer documentation do.
 
-In every case, the only FSM-specific detail to remember is that a flexible member's real body
-numbers are only known AFTER `generate_flex_model_file` expands Table 1/Table 2 -- open the
-generated file (or its printed Table 3, see `multibody.tables.bodies_table`) to find the real body
-number you want to attach a force/mooring line to, then add it past the `USER ADDITIONS` marker,
-exactly like the tip-payload pattern used in Example 4 above.
+**A force on an ordinary rigid body does not have to wait until after generation.**
+`generate_flex_model_file(...)` itself accepts `Force=`/`Initial_Points=` keyword arguments, used
+exactly like a hand-written rigid example -- except bodies are referenced by their **Table 1 row
+number** (the same numbering `joints`/`types`/`flex_bd` already use), not the real,
+post-expansion body number. The generator automatically translates every such reference into the
+correct real body index, even when that body sits AFTER a flexible member and its real index
+shifted because of it. For a 3-row chain `hub (rigid, row 1) -> link (flex, 3 segments, row 2) ->
+payload (rigid, row 3)`, the payload ends up as real body 5 (1 hub + 3 segments), and a spring
+declared with the row-3 reference is rewritten to use real body 5 automatically:
+
+```python
+# rows: 1=hub (rigid), 2=link (flex, clamped, 3 segments), 3=payload (rigid, AFTER the flex row)
+Force = {
+    "PointsBD": [], "CG": [[3, 5.0, 0.0, 0.0]], "TensionSpring": [], "TensionDamper": [],
+    "TorsionSpring": [([1, 3], [0.0, 99.0])], "TorsionDamper": [],
+}
+mb.generate_flex_model_file(
+    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction,
+    flex_bd, m0, J0, flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+    flex_deformation_mode, flex_clamp_on, output_path,
+    Force=Force, ic=ic, gVec=gVec, tspan=1.0, TimeStep=0.01, overwrite=True,
+)
+# Generated file's Force["TorsionSpring"] (real body numbers, verified):
+#   [([1, 5], [0.0, 99.0]), ([1, 2], [0.0, k_root]), ([2, 3], [0.0, k_int]), ([3, 4], [0.0, k_int])]
+# -- your spring (row 3 -> real body 5) plus the 3 auto-generated internal FSM springs.
+```
+
+The only case this does NOT cover is a force/spring/point attached to a body that itself belongs
+to a flexible member (one of its internal segments, root, or tip) -- Table 1's `flex_bd` marks
+exactly which rows those are, and `generate_flex_model_file` rejects any `Force`/`Initial_Points`
+reference to one of them with a clear error. Those real body numbers are only known AFTER
+`generate_flex_model_file` expands Table 1/Table 2 -- open the generated file (or its printed
+Table 3, see `multibody.tables.bodies_table`) to find the real body number, then add it past the
+`USER ADDITIONS` marker, exactly like the tip-payload pattern used in Example 4 above.
+
+### 6 - Distributed (continuously varying) properties
+
+Every example so far gives each flexible member's `E`/`I`/`A`/`rho` as either a single scalar
+(uniform member) or a length-`n_seg` list (one value per segment, e.g. Example 5's tapered
+`link2`) -- a **piecewise-constant** approximation of whatever the real member's properties do
+along its length. For a member whose properties genuinely vary continuously (i.e., a linearly tapered
+cross-section), Table 2 also accepts a **symbolic expression** for
+`flex_E`/`flex_I`/`flex_A`/`flex_rho` -- a `sympy` expression in one shared symbol standing for
+position along the member (`0` at the root, `L` at the tip) -- instead of a scalar or a list. M4E
+then integrates the real physical quantity directly, rather than asking you to pre-sample it into
+a list yourself. **Only one variable is used to show symbolic distribution along a body. However, different functions can use that symbolic variable for different bodies."** 
+
+**Why this needs its own mechanism, not just "average E and I at each segment."** The quantity that
+is physically additive along a member's length is **compliance density**, `1/(E(x)I(x))` for
+bending (or `1/(E(x)A(x))` for axial) -- not `E` or `I` separately. A segment's rotation under a
+constant moment `M`, and a half-cell's own torsional stiffness `k`, are:
+
+$$
+\theta = M \int \frac{dx}{E(x)\,I(x)}, \qquad
+\frac{1}{k_{\text{half-cell}}} = \int_{\text{half-cell}} \frac{dx}{E(x)\,I(x)}
+$$
 
 
+So M4E integrates `1/(E(x)I(x))` (or `1/(E(x)A(x))`) directly over each **half-cell** (the two halves
+of a non-uniform segment are generally not equal), purely numerically (`sympy.lambdify` +
+`scipy.integrate.quad` -- works the same whether or not the integral has a closed form).
 
+Declaring a member with a continuous property distribution needs one new Table 2 column,
+`flex_x_dist` -- `None` for an ordinary row (every example so far), or a single shared
+`sympy.Symbol` for a row whose `flex_E`/`flex_I`/`flex_A`/`flex_rho` contain an expression in that
+symbol (mixing a plain scalar and a symbolic expression on the same row is fine; mixing a
+per-segment list with a symbolic expression on the same row is not, and raises a clear error):
+
+```python
+import sympy as sym
+x_dist = sym.symbols("x_dist", real=True, nonnegative=True)   # 0 at the root, L at the tip
+
+E0, E_tip, L2 = 200e9, 80e9, 0.6   # row 2's own root/tip modulus and length
+
+flex_x_dist = [None,  x_dist]        # row 1: ordinary; row 2: symbolic, symbol x_dist
+flex_E      = [200e9, E0 - (E0 - E_tip) * x_dist / L2]   # row 2: a continuous distribution
+flex_I      = [2e-6,  2e-6]                                # row 2: constant is fine too
+```
+
+#### Other examples in the repo
+
+- `Examples_flexible_FSM/flex_tapered_axial.py` (`EXAMPLE P` in `FSM_table_generator.py`) -- a
+  tapered axial bar chained directly into a uniform one, mixing the symbolic and scalar
+  conventions side by side in the same chain.
+- `Examples_flexible_FSM/flex_tapered_bending.py` (`EXAMPLE O`) -- a clamped bending cantilever
+  with a continuously tapered second moment of area `I(x)`.
+- `Examples_flexible_FSM/flex_tapered_pendulum.py` (`EXAMPLE Q`) -- a gravity-driven, free-swinging
+  tapered pendulum; the case that actually exercises the CG-centroid limitation below, since
+  gravity torque depends on where the member's true CG is.
+
+As a simple check on the mechanism: for a linearly tapered axial bar ($A(x) = A_0(1-\alpha x/L)$),
+Hooke's law gives the stretch of an infinitesimal slice at position $x$ under a constant force $P$
+as $d\delta = \dfrac{P}{E A(x)}\,dx$. Integrating over the bar's length gives the standard closed-form
+result for a linearly tapered bar's elongation (e.g. Hibbeler, *Mechanics of Materials*):
+
+$$
+\delta = \int_0^{L} \frac{P}{E\,A(x)}\,dx = \frac{PL}{E A_0 \alpha}\,\ln\!\left(\frac{1}{1-\alpha}\right)
+$$
+
+-- the same combined-quantity integration shown above, applied to the simplest checkable case; FSM's
+own half-cell compliances reproduce it to a relative error of `1.28e-16`.
+
+**Known limitation (intentionally deferred): M4E does not compute each segment's true mass
+centroid.** A non-uniform segment's *true* centroid can drift slightly from the geometric midpoint
+that `parent_cg_to_joint`/`joint_to_child_cg` already assume for every segment, and `J` is computed
+rigorously *about that geometric midpoint* (matching every other example's convention), not about
+the true, slightly-offset centroid. Fully correcting this would require shifting the segment's own
+kinematic placement -- out of scope for now.
+
+## 3D multibody dynamics
+The 3D code is available in the [SEA-Stack GitHub repository](https://github.com/Project-SEA-Stack).
+To simulate a 3D mechanism, we first describe its parts and how they are connected.
+Then we choose where it starts, which forces act on it, and how long to simulate it.
+M4E uses those inputs to calculate the motion; you do not write the equations of motion
+yourself.
+
+We use two Python files. The **example file** contains your model and its numerical
+values. The **main file** imports that example, runs it, and plots the results. To run
+a different model, change the example import in the main file.
+
+The examples below follow the same six steps:
+
+| Step | Your decision | Where it goes |
+|---|---|---|
+| 1. Connect the bodies | Which body connects to which, where, and through what joint and vectors? | `data` |
+| 2. Choose attachment points | Where on each body will a spring or point force attach? | `Initial_Points` |
+| 3. Add forces | What acts on a body or connects two attachment points? | `Force` |
+| 4. Supply numerical values | What are the masses, initial positions, speeds, and simulation settings? | `body_inertia`, initial-condition and parameter arrays, time settings |
+| 5. Run and inspect | What motion and energy does the model produce? | The main file |
+
+Read Example 1 first: it explains each step using numbers only. Example 2 shows how
+to replace selected numbers with adjustable parameters. Example 3 shows how to combine
+different joint types. Sections 3-7 are a reference to return to as you build your own
+model. Section 8 is optional: it explains how to inspect the generated equations. Extenral tools can be integrated with M4E using the same approach discussed in the 2D.
+
+**First draw the reference geometry.** Use a drawing in which all joint rotations
+are zero and the body-fixed axes are parallel to the global X, Y, Z axes. This lets you
+read the geometry vectors directly from the drawing. Here **CG** means a body's
+center of gravity, and a **body frame** is a set of body-fixed axes that moves with that body.
+
+**Starting pose is a separate input.**  Initial conditions describe how the mechanism is posed
+and moving when the simulation starts. To start a hinge at a nonzero angle, change
+its initial angle; do not redraw the fixed geometry vectors for that angle.
+
+
+### 1 - What changes from 2D to 3D
+
+#### 1.1 - The same example-writing workflow
+
+The example file describes the problem; the main file describes how to run it. Keep the
+initial conditions and simulation settings in the example, just as in the 2D examples.
+
+
+| Item | 2D | 3D |
+|---|---|---|
+| System class | `MbdSystem` | `MbdSystem3D` |
+| Joint and geometry input | Separate lists | Lists collected in `data` |
+| Position components | `[x, z]` | `[x, y, z]` |
+| Force and moment components | `[Fx, Fz, My]` | Three force and three moment components |
+| Body-data symbols | `BodyDataSym` | `body_data_sym` |
+| Force and point symbols | Combined in `ForcesPointsSym` | Separate `force_sym` and `points_sym` dictionaries |
+| Initial conditions | `ic`, containing positions and speeds | `q_user_np` and `qd_np` |
+| Mass and inertia | `m0` and `J0` | `body_inertia` |
+| Gravity | `g` and `gVec` | `Force["Gravity"]` |
+| Simulation settings | `tspan`, `TimeStep`, optional `integrator_kwargs` | The same example-level names |
+
+#### 1.2 - New joint types and rotation inputs
+
+Revolute (`R`), prismatic (`P`), and floating (`F`) joints are still available. The 3D
+version also provides spherical (`S`), universal (`U`), and cylindrical (`C`) joints.
+A spherical or floating joint can accept Euler angles or a quaternion through
+`rot_param`. We will explain both choices after the examples.

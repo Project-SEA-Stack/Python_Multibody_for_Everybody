@@ -18,6 +18,9 @@ from time import time
 from multibody import MbdSystem    
 import multibody as mbd
 from multibody import load_yaml_as_example
+from multibody._cli_support import install_error_footer
+
+install_error_footer()
 
 ############ Example to import ############
 # from Examples_mbd import _4_Flexible_pendulum as ex
@@ -25,7 +28,7 @@ from multibody import load_yaml_as_example
 # tables at import time -- suppress that noise, we only want Table 1/2/3
 # (joints/bodies) below, whichever kind of example this is.
 with contextlib.redirect_stdout(io.StringIO()):
-    from Examples_flexible_FSM  import flex_double_pendulum as ex
+    from Examples_mbd  import _1_Double_pendulum as ex
 
 ############ Example to import ############
 # folder  = 'Examples_yaml/'
@@ -67,6 +70,11 @@ sol     = MBDsys.integrate(mainNumVars, ex.m0, ex.J0,
 
 
 com_positions, com_velocities, angle_positions, joint = mbd.evaluate_trajectories(MBDsys, sol, mainNumVars)
+
+print('\nReached end')
+print("=" * 70)
+print("To access Documentation: open documentation/build/html/index.html in a browser | Questions: https://github.com/Project-SEA-Stack/Python_multibody_dyamics/issues")
+print("=" * 70)
 
 ############### Plotting ###############
 # Multibody connections graph plot

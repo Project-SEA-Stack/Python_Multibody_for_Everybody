@@ -445,10 +445,23 @@ def bodies_table(joints, types, parent_cg_to_joint, joint_to_child_cg,
 
 def flex_properties_table(flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
                            flex_deformation_mode, flex_clamp_on, flex_m=None, flex_J=None,
-                           title=None):
+                           flex_x_dist=None, title=None):
     """
     Build and print Table 2 -- per-flexible-member properties. Row i's
     properties belong to real body flex_bds[i] (Table 1's flex_bd column).
+
+    flex_x_dist : optional list, parallel to flex_bds -- None (default) for
+    every row, or per row, None or a sympy.Symbol (see
+    _flex_distribution_helper module docstring). When a row has a
+    distribution AND its length is already a concrete number (flex_L[i] is
+    not None -- i.e. not a has-a-child row whose length is only known after
+    full Table 1/2 expansion), E/A/I/rho are printed as midpoint-sampled,
+    DISPLAY-ONLY numbers instead of the raw symbolic expression (never used
+    for the actual physics, which always integrates the full expression
+    directly -- see generate_flex_model_file). If the length isn't
+    resolvable yet, the raw expression is printed as-is (_fmt_cell_value
+    already renders any unrecognized value via its own str(), so this never
+    errors, just looks less concrete).
 
     Returns
     -------
@@ -456,14 +469,23 @@ def flex_properties_table(flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, 
     """
     rows = []
     for i, body in enumerate(flex_bds):
+        E_i, A_i, I_i, rho_i = flex_E[i], flex_A[i], flex_I[i], flex_rho[i]
+        x_dist_sym = flex_x_dist[i] if flex_x_dist is not None else None
+        if x_dist_sym is not None and flex_L[i] is not None:
+            from ..flexible._flex_distribution_helper import resolve_display_samples
+            dx = flex_L[i] / flex_n_seg[i]
+            E_i = resolve_display_samples(E_i, x_dist_sym, flex_n_seg[i], dx)
+            A_i = resolve_display_samples(A_i, x_dist_sym, flex_n_seg[i], dx)
+            I_i = resolve_display_samples(I_i, x_dist_sym, flex_n_seg[i], dx)
+            rho_i = resolve_display_samples(rho_i, x_dist_sym, flex_n_seg[i], dx)
         row = {
             "flex_bd": body,
             "n_seg": flex_n_seg[i],
             "L": flex_L[i],
-            "E": flex_E[i],
-            "A": flex_A[i],
-            "I": flex_I[i],
-            "rho": flex_rho[i],
+            "E": E_i,
+            "A": A_i,
+            "I": I_i,
+            "rho": rho_i,
             "deform_mode": flex_deformation_mode[i],
             "clamp_on": flex_clamp_on[i],
         }
@@ -477,5 +499,6 @@ def flex_properties_table(flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, 
         print(title)
     print_grid_table(df)
     return df
+
 
 

@@ -179,15 +179,16 @@ class YAML2Example:
         order of self.joint_records.
 
         Steps per body:
-        (a) Read 'mass'
-        (b) Build I_C from YAML (about COM unless declared otherwise)
-        (c) Get (R_BC, r_BC, about_com) from _centroidal_transform
-        (d) If YAML inertia is about the B-frame (not COM): convert it to COM via
-            parallel-axis inverse: I_B@COM = I_B@B - m * (||r||^2 I - r r^T),
-            where r = r_BC (B→C in B).
-            If it is already about COM: keep as-is.
-        (e) Ensure inertia is expressed in the B-frame at COM: I_B@COM = R_BC I_C R_BC^T
-        (f) Extract J_y = (I_B@COM)[1,1] for 2D (out-of-plane about Y).
+
+            (a) Read 'mass'
+            (b) Build I_C from YAML (about COM unless declared otherwise)
+            (c) Get (R_BC, r_BC, about_com) from _centroidal_transform
+            (d) If YAML inertia is about the B-frame (not COM): convert it to COM via
+                parallel-axis inverse: I_B@COM = I_B@B - m * (||r||^2 I - r r^T),
+                where r = r_BC (B→C in B).
+                If it is already about COM: keep as-is.
+            (e) Ensure inertia is expressed in the B-frame at COM: I_B@COM = R_BC I_C R_BC^T
+            (f) Extract J_y = (I_B@COM)[1,1] for 2D (out-of-plane about Y).
         """
         m_list  = []
         Iy_list = []

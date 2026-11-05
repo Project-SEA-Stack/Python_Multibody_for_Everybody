@@ -29,21 +29,49 @@ YAML-based model input, and flexible visualization.
 
 ```bash
 # Clone the repo and enter the directory
-git clone https://github.com/Project-SEA-Stack/Python_multibody_dyamics.git
-cd Python_multibody_dyamics
+git clone https://github.com/Project-SEA-Stack/Python_Multibody_for_Everybody.git
+cd Python_Multibody_for_Everybody
 ```
 
 **Option 1 — conda (recommended):**
+
+***No documentation***
 ```bash
 conda env create -f multibody_env.yaml
 conda activate multibody_env
 ```
 
+***With documentation***
+```bash
+conda env create -f multibody_env.yaml
+conda activate multibody_env
+pip install -e ".[docs]"
+```
+
 **Option 2 — pip (existing environment):**
+
+***No documentation***
 ```bash
 pip install -e .   # editable install for developers
 # or
 pip install .      # regular install for users
+```
+
+***With documentation***
+```bash
+pip install -e ".[docs]"   # editable install for developers
+# or
+pip install ".[docs]"      # regular install for users
+```
+
+## 📚 Build the documentation
+
+If module was installed with documentation, then from Python_Multibody_for_Everybody directory run:
+
+```bash
+cd documentation
+make html
+# open build/html/index.html in a browser
 ```
 
 ---
@@ -52,31 +80,24 @@ pip install .      # regular install for users
 
 **Run a multibody dynamics example:**
 ```bash
-# From the repository root
-python -c "
-from Examples_mbd import spiderfloat as ex
-from multibody import MbdSystem, integrate_dynamics
-MBD = MbdSystem.from_example(ex)
-"
-# or use main.py after editing the import at the top
+# From the repository root open main.py and from terminal run:
 python main.py
 ```
 
 **Run a YAML-defined model:**
+
+Uncomment the following lines in main.py
 ```bash
-python -c "
-from multibody.yaml_parser.yaml_adapter import YamlAdapter
-MBD = YamlAdapter.from_yaml('Examples_yaml/spiderfloat.model.yaml',
-                             'Examples_yaml/spiderfloat.simulation.yaml')
-"
+# folder  = 'Examples_yaml/'
+# ex_file = 'slider_w_dpend'  # Example file to import
+# # Load the example from the YAML file
+# ex      = load_yaml_as_example(folder + ex_file)
 ```
 
-**Instantia a YAML-defined model on the main script:**
+Then run:
 
-```python
-from multibody import load_yaml_as_example, MbdSystem
-ex = load_yaml_as_example("yaml_examples/double_pendulum")
-MBD = MbdSystem.from_example(ex)
+```bash
+python main.py
 ```
 
 **Run a linearization example (requires Capytaine):**
@@ -127,22 +148,4 @@ Python_multibody_dyamics/
 ```
 
 ---
-
-## 📚 Documentation
-
-Install Sphinx dependencies (included in `multibody_env.yaml`), then build:
-
-```bash
-cd documentation
-conda run -n multibody_env sphinx-build source build/html -b html
-# open build/html/index.html in a browser
-```
-
-To build a PDF (requires a TeX distribution such as `tectonic`):
-```bash
-conda install -c conda-forge tectonic
-conda run -n multibody_env sphinx-build source build/latex -b latex
-cd documentation/build/latex
-tectonic main.tex
-```
 

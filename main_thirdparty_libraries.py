@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 # Custom modules
 from multibody import MbdSystem            # new public class
 import multibody as mbd
+from multibody._cli_support import install_error_footer
+
+install_error_footer()
 
 # temporary
 from multibody import ExternalForcesManager

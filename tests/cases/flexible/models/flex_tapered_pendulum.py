@@ -1,0 +1,94 @@
+# -*- coding: utf-8 -*-
+"""
+Frozen regression model copied from Examples_flexible_FSM/flex_tapered_pendulum.py.
+
+Keep this fixture independent of changes to the user-facing example.
+"""
+import sys
+import os
+
+source_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'source'))
+sys.path.insert(0, source_dir)
+
+import numpy as np
+import sympy as sym
+
+import multibody as mb
+from multibody import JointSystem, normalize_prismatic
+from multibody import symvars_definition
+
+Reference_frame_Origin = np.array([0, 0])
+
+joints = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8]]
+types = ['R', 'R', 'R', 'R', 'R', 'R', 'R', 'R']
+parent_cg_to_joint = [[0.0, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0]]
+joint_to_child_cg = [[0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0], [0.0625, 0.0]]
+prismatic_direction = [[float('nan'), float('nan')], [float('nan'), float('nan')], [float('nan'), float('nan')], [float('nan'), float('nan')], [float('nan'), float('nan')], [float('nan'), float('nan')], [float('nan'), float('nan')], [float('nan'), float('nan')]]
+prismatic_direction = normalize_prismatic(prismatic_direction)
+
+Initial_Points = {}
+# Ground points: fixed [x, z] coordinates.
+Initial_Points["GR"] = []
+# Body-defined points ("BD"): dictionary keyed by real body number.
+Initial_Points["BD"] = {}
+
+# No symbolic force/body-data parameters used by the auto-generated
+# FSM springs -- extend these two lists (and ForcesPointsNum/BodyDataNum
+# below) if you add your own symbolic forces past the marker.
+ForcesPointsSym = []
+BodyDataSym = []
+
+Force = {}
+# Forces applied on body-defined points (PointsBD):
+Force["PointsBD"] = []
+# Forces applied at the center of gravity (CG):
+Force["CG"] = []
+# Tension springs: list of tuples (connection, [l0, stiffness]).
+Force["TensionSpring"] = []
+# Tension dampers:
+Force["TensionDamper"] = []
+# Torsion springs: list of tuples ([body1, body2], [theta_0, k]) --
+# includes the auto-generated FSM bending springs for every flexible member.
+Force["TorsionSpring"] = [([1, 2], [0.0, 121009.54864083903]), ([2, 3], [0.0, 89337.89802320076]), ([3, 4], [0.0, 63730.01357256357]), ([4, 5], [0.0, 43542.776817908656]), ([5, 6], [0.0, 28133.073350694445]), ([6, 7], [0.0, 16857.796566611843]), ([7, 8], [0.0, 9073.856476814519])]
+# Torsion dampers:
+Force["TorsionDamper"] = []
+
+ic = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+m0 = np.array([1195.3125, 1085.9375, 976.5624999999999, 867.1875, 757.8125000000001, 648.4375, 539.0625, 429.6875])
+J0 = np.array([1.556396484375, 1.4139811197916672, 1.2715657552083335, 1.1291503906249998, 0.986735026041667, 0.8443196614583336, 0.7019042968750003, 0.5594889322916669])
+gVec = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]).reshape(-1, 1)
+g = 9.81
+
+ForcesPointsNum = np.ones(len(ForcesPointsSym))
+BodyDataNum = np.ones(len(BodyDataSym))
+
+tspan = 2.0
+TimeStep = 0.005
+
+animation_on = 1  # Display animation: 1, 0-otherwise
+SaveMovieOn = None  # Extension e.g. '.gif' saves the animation, otherwise None
+plotTstep = 5  # how many times faster are we plotting w.r.t. simulation time
+
+# FSM's bending springs make this system stiff -- the default explicit
+# RK45 solver can hang. main.py reads this (falls back to {} / plain RK45
+# if absent, so ordinary rigid examples are unaffected).
+integrator_kwargs = {'algorithm': 'Radau', 'rtol': 0.0001, 'atol': 1e-06}
+
+#%% Checks section: ensures everything is defined correctly
+mb.checks.bodies(joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction)
+mb.checks.points_forces(joints, types, Initial_Points, Force)
+
+NBodies = 8  # for reference: real body numbers run 1..8
+
+# Original (pre-expansion) Table 1 / Table 2 -- kept ONLY so main.py can
+# print all 3 tables (Table 1, Table 2, and the expanded Table 3 above).
+# NOT used by MbdSystem/expand_flex_table -- the expanded lists above are
+# the ones actually consumed.
+flex_table1 = {'joints': [[0, 1]], 'types': ['R'], 'parent_cg_to_joint': [[0.0, 0.0]], 'joint_to_child_cg': [[0.5, 0.0]], 'prismatic_direction': [[float('nan'), float('nan')]], 'm0': [None], 'J0': [None], 'flex_bd': [1]}
+flex_table2 = {'flex_bds': [1], 'flex_n_seg': [8], 'flex_L': [1.0], 'flex_E': [[17488.168945312504, 13113.3740234375, 9536.7431640625, 6677.885742187503, 4456.411132812499, 2791.928710937501, 1604.0478515625005, 812.3779296875]], 'flex_A': [1.0], 'flex_I': [1.0], 'flex_rho': [[9562.5, 8687.5, 7812.5, 6937.5, 6062.5, 5187.5, 4312.5, 3437.5]], 'flex_deformation_mode': ['bending'], 'flex_clamp_on': [False], 'flex_m': None, 'flex_J': None}
+
+# ===================== USER ADDITIONS BELOW =====================
+# Add any additional Force entries here, using the real body numbers
+# above (e.g. Force['PointsBD'].append([<real_body>, 0, Fx, Fz, My])).
+# Bodies belonging to a flexible member can ONLY be referenced here,
+# never in the pre-expansion input Table 1/Table 2 call.

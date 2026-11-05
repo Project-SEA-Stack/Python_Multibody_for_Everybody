@@ -24,11 +24,13 @@ then just run `python main.py`.
 """
 import sys
 import os
+import math
 
 source_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'source'))
 sys.path.insert(0, source_dir)
 
 import numpy as np
+import sympy as sym
 
 import multibody as mb
 
@@ -735,3 +737,302 @@ mb.tables.flex_properties_table(flex_bds, flex_n_seg, flex_L, flex_E, flex_A, fl
                                  flex_deformation_mode, flex_clamp_on,
                                  title="\n===== EXAMPLE N -- Table 2 (flexible-member properties) =====")
 
+# ---------------------------------------------------------------------------
+# EXAMPLE O: clamped BENDING cantilever with a continuously TAPERED second
+# moment of area I(x) (symbolic, not per-segment lists like EXAMPLE M) --
+# demonstrates Table 2's flex_x_dist column (source/multibody/flexible/
+# _flex_distribution_helper.py): I is declared as a sympy expression in one
+# shared symbol, x_dist, instead of a scalar or a length-n_seg list, and each
+# segment's torsion-spring stiffness is derived by numerically integrating the
+# combined compliance density 1/(E*I(x)) over that segment's own two
+# half-cells -- not by averaging I(x) at n_seg sample points and plugging
+# into the constant-property formula (see _flex_distribution_helper.py's
+# module docstring for why that distinction matters: compliance is what is
+# physically additive along the length, not E or I separately).
+# ---------------------------------------------------------------------------
+x_dist = sym.symbols("x_dist", real=True, nonnegative=True)
+
+N_SEG = 8
+L_BEAM = 1.0
+E_STEEL = 200e9
+RHO_STEEL = 7800.0
+I_ROOT, I_TIP = 8e-8, 2e-8                      # tapers to 1/4 of its root value at the tip
+I_expr = I_ROOT - (I_ROOT - I_TIP) * x_dist / L_BEAM
+
+joints = [[0, 1]]
+types = ['R']
+parent_cg_to_joint = [[0.0, 0.0]]
+joint_to_child_cg = [[L_BEAM / 2.0, 0.0]]
+prismatic_direction = [[np.nan, np.nan]]
+flex_bd, m0, J0 = [1], [None], [None]
+flex_bds, flex_n_seg, flex_L = [1], [N_SEG], [L_BEAM]
+flex_E, flex_A, flex_I, flex_rho = [E_STEEL], [1e-4], [I_expr], [RHO_STEEL]
+flex_deformation_mode, flex_clamp_on = ["bending"], [True]
+flex_x_dist = [x_dist]
+
+n_bodies = N_SEG
+ic = np.zeros(2 * n_bodies)
+ic[:n_bodies] = np.linspace(0.3 / N_SEG, 0.3, N_SEG)   # bent shape, released from rest
+
+output_path = os.path.join(os.path.dirname(__file__), "Examples_flexible_FSM", "flex_tapered_bending.py")
+mb.generate_flex_model_file(
+    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction,
+    flex_bd, m0, J0,
+    flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+    flex_deformation_mode, flex_clamp_on,
+    output_path,
+    flex_x_dist=flex_x_dist,
+    ic=ic, gVec=np.zeros(n_bodies), tspan=2.0, TimeStep=0.005,
+    integrator_kwargs={"algorithm": "Radau", "rtol": 1e-4, "atol": 1e-6},
+    overwrite=True,
+)
+print(f"EXAMPLE O: generated {output_path} (tapered bending, I(x) continuous)")
+
+# ---------------------------------------------------------------------------
+# EXAMPLE P: VALIDATION -- a multi-body chain mixing a TAPERED and a
+# NON-tapered axial member in series, specifically so the two conventions
+# sit side by side: ground -> HUB (rigid) -> BAR1 (axial, flex, continuously
+# TAPERED cross-section A(x) = A0*(1-alpha*x/L1), symbolic) -> BAR2 (axial,
+# flex, mounted DIRECTLY on BAR1's own phantom tip anchor -- no extra rigid
+# body needed in between, same direct flex-to-flex chaining EXAMPLE B
+# already uses for bending -- UNIFORM cross-section, a plain scalar, no
+# taper at all). A tip load P is applied at BAR2's own tip anchor (the last
+# real body).
+#
+# Validated against the SAME closed-form integral as a single tapered bar
+# (see flex_tapered_axial.py's own module-level discussion), just summed
+# across BOTH members, since HUB is rigid (zero compliance) and the two
+# bars are a single unbranched series chain carrying one constant end load:
+#
+#   delta = (P*L1)/(E1*A1_0*alpha1)*ln(1/(1-alpha1))  +  (P*L2)/(E2*A2)
+#           \_______________ BAR1 (tapered) ________/    \_ BAR2 (uniform) _/
+#
+# -- i.e. each member's own elongation formula, simply added, exactly
+# because series compliances always add regardless of how many different
+# members (tapered or not) make up the chain. Confirmed to agree with FSM's
+# own total elongation (read directly off the generated file's own
+# TensionSpring stiffnesses, same technique as the single-bar case) to
+# ~1e-16 relative error.
+# ---------------------------------------------------------------------------
+HUB_HALF, HUB_MASS, HUB_J = 0.05, 0.05, 1e-4
+L1, E1, A1_0, ALPHA1, RHO1, N_SEG1 = 1.0, 200e9, 1e-4, 0.5, 1e-8, 4   # BAR1: tapered (steel)
+L2, E2, A2, RHO2, N_SEG2 = 0.6, 70e9, 6e-5, 1e-8, 4                   # BAR2: uniform (aluminum)
+P_TIP = 1000.0
+A1_expr = A1_0 * (1 - ALPHA1 * x_dist / L1)   # BAR1's own symbolic taper
+
+# rows: 1=hub (rigid), 2=BAR1 (flex, axial, TAPERED), 3=BAR2 (flex, axial, uniform)
+joints = [[0, 1], [1, 2], [2, 3]]
+types = ['R', 'P', 'P']
+parent_cg_to_joint = [[0.0, 0.0], [HUB_HALF, 0.0], [L1 / 2.0, 0.0]]
+joint_to_child_cg  = [[HUB_HALF, 0.0], [L1 / 2.0, 0.0], [L2 / 2.0, 0.0]]
+prismatic_direction = [[np.nan, np.nan], [1.0, 0.0], [1.0, 0.0]]
+flex_bd = [np.nan, 2, 3]
+m0 = [HUB_MASS, None, None]
+J0 = [HUB_J, None, None]
+
+flex_bds, flex_n_seg, flex_L = [2, 3], [N_SEG1, N_SEG2], [L1, L2]
+flex_E, flex_A, flex_I, flex_rho = [E1, E2], [A1_expr, A2], [1.0, 1.0], [RHO1, RHO2]
+flex_deformation_mode, flex_clamp_on = ["axial", "axial"], [True, True]
+flex_x_dist = [x_dist, None]   # BAR1: symbolic taper; BAR2: None -- an ordinary row
+
+n_bodies = 1 + (N_SEG1 + 1) + (N_SEG2 + 1)   # hub + (BAR1 segs + its own tip anchor) + (BAR2 segs + its own tip anchor)
+output_path = os.path.join(os.path.dirname(__file__), "Examples_flexible_FSM", "flex_tapered_axial.py")
+mb.generate_flex_model_file(
+    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction,
+    flex_bd, m0, J0,
+    flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+    flex_deformation_mode, flex_clamp_on,
+    output_path,
+    flex_x_dist=flex_x_dist,
+    ic=np.zeros(2 * n_bodies), gVec=np.zeros(n_bodies), tspan=1.0, TimeStep=0.01,
+    overwrite=True,
+)
+
+_spec = _ilu.spec_from_file_location("flex_tapered_axial", output_path)
+_gen = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_gen)
+total_compliance = sum(1.0 / k for _, (l0, k) in _gen.Force["TensionSpring"])
+elongation_fsm = P_TIP * total_compliance
+elongation_analytical = (
+    (P_TIP * L1) / (E1 * A1_0 * ALPHA1) * math.log(1.0 / (1.0 - ALPHA1))
+    + (P_TIP * L2) / (E2 * A2)
+)
+rel_err = abs(elongation_fsm - elongation_analytical) / elongation_analytical
+print(f"EXAMPLE P: generated {output_path} ({n_bodies} real bodies -- "
+      f"hub + tapered BAR1 + uniform BAR2)")
+if rel_err < 1e-8:
+    print(f"EXAMPLE P tapered-chain check: PASS (FSM={elongation_fsm:.8e} m, "
+          f"analytical={elongation_analytical:.8e} m, rel. error={rel_err:.2e})")
+else:
+    print(f"EXAMPLE P tapered-chain check: FAIL (FSM={elongation_fsm:.8e} m, "
+          f"analytical={elongation_analytical:.8e} m, rel. error={rel_err:.2e})")
+
+# ---------------------------------------------------------------------------
+# EXAMPLE Q: VALIDATION -- a single, VERY TAPERED flexible pendulum (one
+# bending member, PINNED at its thick root end, swinging freely under
+# gravity). Unlike EXAMPLE O (clamped, zero-gravity, frequency-only check),
+# this is a gravity-driven case specifically so FSM's documented "CG stays
+# at the geometric midpoint, even for a tapered segment" simplification
+# (see _flex_distribution_helper.py's module docstring) has somewhere to
+# actually show up: gravity torque depends on where the CG truly is, so a
+# real physical taper's CG offset (toward the thick end) will make a real
+# Chrono reconstruction swing slightly differently than FSM predicts, in a
+# way a pure modal/frequency check never would.
+#
+# Width tapers linearly from root to TIP_RATIO*root; assuming a constant-
+# depth rectangular section, EI ~ width^3 and mass/length ~ width^1, so:
+#   EI(x)  = EI_ROOT  * (1 - (1-TIP_RATIO)*x/L)^3   (very soft tip)
+#   rho(x) = RHO_ROOT * (1 - (1-TIP_RATIO)*x/L)      (lighter tip)
+# Lumped convention (flex_A=flex_I=1, flex_E=EI product directly), same
+# units/scale as the already-validated flex_double_pendulum.py, so the same
+# EI_BOOST=100-style Chrono-reconstruction fix is expected to carry over.
+# ---------------------------------------------------------------------------
+N_SEG_Q = 8
+L_BEAM_Q = 1.0
+TIP_RATIO = 0.3   # tip width/EI/rho as a fraction of the root's
+EI_ROOT = 2e4
+RHO_ROOT = 10000.0   # 2x the first attempt's mass (EI held fixed -- the proven-stable lever)
+width_ratio_expr = 1 - (1 - TIP_RATIO) * x_dist / L_BEAM_Q
+EI_expr_Q = EI_ROOT * width_ratio_expr ** 3
+RHO_expr_Q = RHO_ROOT * width_ratio_expr
+
+joints = [[0, 1]]
+types = ['R']
+parent_cg_to_joint = [[0.0, 0.0]]
+joint_to_child_cg = [[L_BEAM_Q / 2.0, 0.0]]
+prismatic_direction = [[np.nan, np.nan]]
+flex_bd, m0, J0 = [1], [None], [None]
+flex_bds, flex_n_seg, flex_L = [1], [N_SEG_Q], [L_BEAM_Q]
+flex_E, flex_A, flex_I, flex_rho = [EI_expr_Q], [1.0], [1.0], [RHO_expr_Q]
+flex_deformation_mode, flex_clamp_on = ["bending"], [False]   # PINNED root -- swings freely
+flex_x_dist_Q = [x_dist]
+
+n_bodies_Q = N_SEG_Q
+ic_Q = np.zeros(2 * n_bodies_Q)   # all segments start horizontal (angle=0), at rest --
+                                  # gravity alone drives both the rigid swing and bending
+
+output_path = os.path.join(os.path.dirname(__file__), "Examples_flexible_FSM", "flex_tapered_pendulum.py")
+mb.generate_flex_model_file(
+    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction,
+    flex_bd, m0, J0,
+    flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+    flex_deformation_mode, flex_clamp_on,
+    output_path,
+    flex_x_dist=flex_x_dist_Q,
+    ic=ic_Q, gVec=np.ones(n_bodies_Q), tspan=2.0, TimeStep=0.005,
+    integrator_kwargs={"algorithm": "Radau", "rtol": 1e-4, "atol": 1e-6},
+    overwrite=True,
+)
+print(f"EXAMPLE Q: generated {output_path} (very tapered flexible pendulum, "
+      f"tip EI={EI_ROOT * TIP_RATIO**3:.3e} vs root EI={EI_ROOT:.3e})")
+
+# ---------------------------------------------------------------------------
+# EXAMPLE R: VALIDATION -- flexible double pendulum, "moderate" flexibility.
+# Two pinned bending links (ground->link1->link2, both free rotation, no
+# rigid hub bodies -- pinned mounts already give free rotation at k=0). Same
+# physical parameters as EXAMPLE B above (this IS that case, made active
+# under its own name/output file instead of staying commented out), cross-
+# validated against a real PyChrono corotational-beam reconstruction: tip
+# position tracks FSM to within ~8-16% over a full 2s run once the EI x100
+# / A_STIFF=1e4 reconciliation factors are applied on the Chrono side (see
+# repo memory pychrono_environment.md for the full derivation). Output path
+# is deliberately NEW (not flex_double_pendulum.py, a different pre-existing
+# file) to avoid touching anything else.
+# ---------------------------------------------------------------------------
+L1, L2 = 2.0, 2.0
+EI1, EI2 = 1e6, 1e6
+RHO1, RHO2 = 10000.0, 50000.0
+N_SEG1, N_SEG2 = 6, 6
+
+joints = [[0, 1], [1, 2]]
+types = ['R', 'R']
+parent_cg_to_joint = [[0.0, 0.0], [L1 / 2.0, 0.0]]
+joint_to_child_cg = [[L1 / 2.0, 0.0], [L2 / 2.0, 0.0]]
+prismatic_direction = [[np.nan, np.nan]] * 2
+flex_bd = [1, 2]
+m0 = [None, None]
+J0 = [None, None]
+
+flex_bds, flex_n_seg, flex_L = [1, 2], [N_SEG1, N_SEG2], [L1, L2]
+flex_E, flex_A, flex_I, flex_rho = [EI1, EI2], [1.0, 1.0], [1.0, 1.0], [RHO1, RHO2]
+flex_deformation_mode, flex_clamp_on = ["bending", "bending"], [False, False]
+
+OMEGA_ROOT, OMEGA_TIP = 2.0, 20.0
+n_bodies = N_SEG1 + N_SEG2
+ic = np.zeros(2 * n_bodies)
+ic[:n_bodies] = np.pi / 2
+ic[n_bodies:] = np.linspace(OMEGA_ROOT, OMEGA_TIP, n_bodies)
+
+output_path = os.path.join(os.path.dirname(__file__), "Examples_flexible_FSM", "flex_double_pendulum_moderate.py")
+mb.generate_flex_model_file(
+    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction,
+    flex_bd, m0, J0,
+    flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+    flex_deformation_mode, flex_clamp_on,
+    output_path,
+    ic=ic, gVec=np.ones(n_bodies), tspan=2.0, TimeStep=0.005,
+    integrator_kwargs={"algorithm": "Radau", "rtol": 1e-4, "atol": 1e-6},
+    overwrite=True,
+)
+print(f"EXAMPLE R: generated {output_path} (double pendulum, moderate flexibility)")
+
+# ---------------------------------------------------------------------------
+# EXAMPLE S: VALIDATION -- same double pendulum, MORE flexible (density x2,
+# EI held FIXED at the proven-stable value). Lesson learned the hard way
+# (see repo memory): don't make a validated flexible case "more flexible" by
+# lowering EI further -- that reopens a geometric-coupling instability in
+# the Chrono reconstruction. Raising density by a MODEST factor (2x) while
+# holding EI fixed stays well inside the validated regime: Chrono match
+# stayed comparable (~10-16% tip position error) while bending amplitude
+# roughly doubled.
+# ---------------------------------------------------------------------------
+RHO1_FLEX, RHO2_FLEX = 20000.0, 100000.0
+flex_rho = [RHO1_FLEX, RHO2_FLEX]
+
+output_path = os.path.join(os.path.dirname(__file__), "Examples_flexible_FSM", "flex_double_pendulum_flexible.py")
+mb.generate_flex_model_file(
+    joints, types, parent_cg_to_joint, joint_to_child_cg, prismatic_direction,
+    flex_bd, m0, J0,
+    flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+    flex_deformation_mode, flex_clamp_on,
+    output_path,
+    ic=ic, gVec=np.ones(n_bodies), tspan=2.0, TimeStep=0.005,
+    integrator_kwargs={"algorithm": "Radau", "rtol": 1e-4, "atol": 1e-6},
+    overwrite=True,
+)
+print(f"EXAMPLE S: generated {output_path} (double pendulum, 2x density -- more flexible)")
+
+# ---------------------------------------------------------------------------
+# EXAMPLE T: REFERENCE ONLY -- Table 1/Table 2 for the mixed rigid+flexible
+# chain already committed as Examples_flexible_FSM/flex_mixed_chain.py
+# (ground -> rigid hub -> axial flex member -> bending flex member -> rigid
+# payload). Shown here purely for catalog discoverability, same as EXAMPLE
+# N -- deliberately does NOT call generate_flex_model_file/overwrite
+# anything, since flex_mixed_chain.py is validated ground truth for an
+# extensive PyChrono cross-check (rigid-body + explicit-spring
+# reconstruction, matching to <0.0005 rad short-term and holding a clean
+# match over a full 5-second, ~28-cycle run at the right time resolution --
+# see repo memory pychrono_environment.md). These values are copied
+# EXACTLY from that file's own flex_table1/flex_table2 dict comments.
+# ---------------------------------------------------------------------------
+joints = [[0, 1], [1, 2], [2, 3], [3, 4]]
+types = ['R', 'P', 'R', 'R']
+parent_cg_to_joint = [[0.1, 0.0], [0.05, 0.0], [0.4, 0.0], [0.3, 0.0]]
+joint_to_child_cg = [[0.05, 0.0], [0.4, 0.0], [0.3, 0.0], [0.0, 0.0]]
+prismatic_direction = [[np.nan, np.nan], [1.0, 0.0], [np.nan, np.nan], [np.nan, np.nan]]
+flex_bd = [np.nan, 2, 3, np.nan]
+m0 = [0.05, None, None, 0.2]
+J0 = [0.001, None, None, 0.001]
+
+flex_bds, flex_n_seg, flex_L = [2, 3], [4, 4], [0.8, 0.6]
+flex_E, flex_A, flex_I, flex_rho = [1000000.0, 50.0], [1.0, 1.0], [1.0, 1.0], [2.0, 1.0]
+flex_deformation_mode, flex_clamp_on = ["axial", "bending"], [True, True]
+
+mb.tables.bodies_table(joints, types, parent_cg_to_joint, joint_to_child_cg,
+                        prismatic_direction, m0, J0, flex_bd,
+                        title="\n===== EXAMPLE T -- Table 1 (bodies/joints, pre-expansion) "
+                              "[see Examples_flexible_FSM/flex_mixed_chain.py] =====")
+mb.tables.flex_properties_table(flex_bds, flex_n_seg, flex_L, flex_E, flex_A, flex_I, flex_rho,
+                                 flex_deformation_mode, flex_clamp_on,
+                                 title="\n===== EXAMPLE T -- Table 2 (flexible-member properties) "
+                                       "[see Examples_flexible_FSM/flex_mixed_chain.py] =====")
